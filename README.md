@@ -17,8 +17,27 @@
 - 🖌️ **在线画图工作台** — 网页上直接画，支持文生图、图生图、多图编辑
 - 🎯 **设计工具** — AI 辅助 UI 设计
 - 📦 **号池管理** — 批量导入账号，自动轮询、自动剔除失效的
-- 🤖 **注册机** — 自动注册 ChatGPT 账号
+- 🤖 **注册机** — 自动注册 ChatGPT 账号，产出完整凭证（含 `refresh_token`）
 - 📊 **日志 & 图片管理** — 全部可视化
+
+## 注册机产出格式
+
+注册成功的每个账号都会生成完整凭证，支持一键导出 / 复制：
+
+```json
+{
+  "id_token": "eyJ...",
+  "access_token": "eyJ...",
+  "refresh_token": "rt_xxxxxxxx...",
+  "account_id": "b6aa9755-xxxx-xxxx-xxxx-xxxxxxxxxxxx",
+  "last_refresh": "2026-05-26T13:10:11.000Z",
+  "email": "xxx@outlook.com",
+  "type": "codex",
+  "expired": "2026-06-04T13:54:51.000Z"
+}
+```
+
+> **带 `refresh_token`**，可直接用于 CPA / sub2api / 其他号池管理工具导入，支持 token 自动续期。
 
 ## 三步部署
 
