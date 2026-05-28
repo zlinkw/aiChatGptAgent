@@ -18,6 +18,7 @@
 - 🎯 **设计工具** — AI 辅助 UI 设计
 - 📦 **号池管理** — 批量导入账号，自动轮询、自动剔除失效的
 - 🤖 **注册机** — 自动注册 ChatGPT 账号，产出完整凭证（含 `refresh_token`）
+- 🔀 **反向代理** — 号池账号封装为标准 OpenAI API，支持多用户分发、Key 管理、自动轮询调度
 - 📊 **日志 & 图片管理** — 全部可视化
 
 ## 注册机产出格式
@@ -38,6 +39,32 @@
 ```
 
 > **带 `refresh_token`**，可直接用于 CPA / sub2api / 其他号池管理工具导入，支持 token 自动续期。
+
+## 反向代理
+
+项目部署后就是一个完整的 **OpenAI 兼容 API 反代服务**：
+
+```
+你的号池账号 → ChatGPT2API → 标准 OpenAI API → 给任何客户端/用户使用
+```
+
+**核心能力：**
+- 对外暴露标准 OpenAI API（`/v1/chat/completions`、`/v1/images/generations` 等）
+- 号池内部自动轮询调度，对用户透明
+- 支持生成多个客户端 Key，每个 Key 独立管理
+- 支持多用户分发 + 额度控制
+- Web 面板内置接入指南，一键复制 Base URL / Key / curl 示例
+
+**快速验证：**
+
+```bash
+curl http://你的IP:3001/v1/chat/completions \
+  -H "Authorization: Bearer 你的auth-key" \
+  -H "Content-Type: application/json" \
+  -d '{"model":"auto","messages":[{"role":"user","content":"你好"}]}'
+```
+
+收到 JSON 回复就说明反代正常工作。
 
 ## 三步部署
 
