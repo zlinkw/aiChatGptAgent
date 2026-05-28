@@ -143,12 +143,6 @@ export function SideNav() {
           {collapsed ? <PanelLeftOpen className="size-4" /> : <><PanelLeftClose className="size-4" /><span className="text-[12px]">收起</span></>}
         </button>
 
-        {!collapsed && (
-          <a href="https://github.com/boteSu/aiChatGptAgent" target="_blank" rel="noreferrer" className="flex items-center gap-2 rounded-lg px-3 py-2 text-[12px] text-muted-foreground transition hover:bg-gray-50 hover:text-foreground">
-            <Github className="size-4 shrink-0" /><span>GitHub</span>
-          </a>
-        )}
-
         {/* User */}
         <div className={cn("flex items-center rounded-lg bg-gray-50", collapsed ? "justify-center p-2" : "gap-2 px-3 py-2.5")}>
           <div className="grid size-8 shrink-0 place-items-center rounded-lg bg-gradient-to-br from-violet-500 to-purple-600 text-white text-[13px] font-bold">{initial}</div>

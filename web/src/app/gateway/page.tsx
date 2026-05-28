@@ -161,6 +161,29 @@ function GatewayContent() {
         </div>
       </div>
 
+      {/* 接入指南 */}
+      <section className="rounded-xl border border-border bg-card p-5 shadow-sm">
+        <div className="flex items-center gap-2 mb-3"><Zap className="size-4 text-primary" /><span className="text-[14px] font-semibold text-foreground">接入指南</span></div>
+        <p className="text-[12px] text-muted-foreground mb-3">在你的 AI 客户端（Cherry Studio、ChatBox、New API、NextChat 等）里填以下配置即可使用：</p>
+        <div className="space-y-2">
+          <div className="flex items-center gap-2 rounded-lg border border-border bg-secondary/30 px-3 py-2.5">
+            <span className="text-[11px] text-muted-foreground w-24 shrink-0">API Base URL</span>
+            <code className="flex-1 truncate font-data text-[12px] text-foreground">{typeof window !== "undefined" ? `${window.location.origin}/v1` : `${entryUrl}/v1`}</code>
+            <button type="button" className="cursor-pointer rounded p-1 text-muted-foreground hover:text-foreground" onClick={() => { const url = typeof window !== "undefined" ? `${window.location.origin}/v1` : `${entryUrl}/v1`; void navigator.clipboard.writeText(url); toast.success("已复制 Base URL"); }}><Copy className="size-3.5" /></button>
+          </div>
+          <div className="flex items-center gap-2 rounded-lg border border-border bg-secondary/30 px-3 py-2.5">
+            <span className="text-[11px] text-muted-foreground w-24 shrink-0">API Key</span>
+            <code className="flex-1 truncate font-data text-[12px] text-foreground">{config.client_keys.find(k => k.enabled)?.key || "（请先生成一个 Key）"}</code>
+            <button type="button" className="cursor-pointer rounded p-1 text-muted-foreground hover:text-foreground" onClick={() => { const key = config.client_keys.find(k => k.enabled)?.key; if (key) { void navigator.clipboard.writeText(key); toast.success("已复制 Key"); } else { toast.error("没有可用的 Key"); } }}><Copy className="size-3.5" /></button>
+          </div>
+          <div className="flex items-center gap-2 rounded-lg border border-border bg-secondary/30 px-3 py-2.5">
+            <span className="text-[11px] text-muted-foreground w-24 shrink-0">可用模型</span>
+            <code className="flex-1 font-data text-[12px] text-foreground">gpt-image-2（画图）· auto / gpt-5（文本）· claude-* / gemini-*（中转）</code>
+          </div>
+        </div>
+        <p className="text-[11px] text-muted-foreground mt-3">请求示例：<code className="text-[11px]">curl {typeof window !== "undefined" ? window.location.origin : entryUrl}/v1/models -H &quot;Authorization: Bearer 你的Key&quot;</code></p>
+      </section>
+
       {/* 配置区 */}
       <div className="grid gap-4 lg:grid-cols-2">
         {/* 客户端 API Keys */}

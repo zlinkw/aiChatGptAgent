@@ -151,40 +151,120 @@ function maskToken(token?: string) {
   return `${token.slice(0, 16)}...${token.slice(-8)}`;
 }
 
-function downloadTokens(accounts: Account[]) {
-  const content = `${accounts.map((account) => account.access_token).join("\n")}\n`;
-  const blob = new Blob([content], { type: "text/plain;charset=utf-8" });
-  const url = URL.createObjectURL(blob);
-  const link = document.createElement("a");
-  link.href = url;
-  link.download = `accounts-${Date.now()}.txt`;
-  link.click();
-  URL.revokeObjectURL(url);
+function downloadTokens(accounts: Account[], selectedIds: string[] = []) {
+  // 从后端拉完整数据（含 refresh_token 等），导出 CPA JSON 格式
+  const token = typeof window !== "undefined" ? localStorage.getItem("auth-key") || "" : "";
+  fetch("/api/accounts", { headers: { Authorization: `Bearer ${token}` } })
+    .then((res) => res.json())
+    .then((data) => {
+      const allItems = (data.items || []) as Record<string, unknown>[];
+      // 如果有选中的，只导出选中的；否则导出全部
+      const selectedSet = new Set(selectedIds);
+      const filtered = selectedSet.size > 0
+        ? allItems.filter((item) => selectedSet.has(String(item.access_token || "")))
+        : allItems;
+      const items = filtered.map((item) => ({
+        id_token: item.id_token || "",
+        access_token: item.access_token || "",
+        refresh_token: item.refresh_token || "",
+        account_id: item.account_id || "",
+        last_refresh: item.last_refresh || "",
+        email: item.email || "",
+        type: item.type || "codex",
+        expired: item.expired || "",
+      }));
+      const content = JSON.stringify(items, null, 2);
+      const blob = new Blob([content], { type: "application/json;charset=utf-8" });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = `accounts-${Date.now()}.json`;
+      link.click();
+      URL.revokeObjectURL(url);
+    })
+    .catch(() => {
+      const subset = selectedIds.length > 0
+        ? accounts.filter((a) => selectedIds.includes(a.access_token))
+        : accounts;
+      const content = `${subset.map((account) => account.access_token).join("\n")}\n`;
+      const blob = new Blob([content], { type: "text/plain;charset=utf-8" });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = `accounts-${Date.now()}.txt`;
+      link.click();
+      URL.revokeObjectURL(url);
+    });
 }
 
 function exportSingleAccount(account: Account) {
-  const email = account.email || "unknown";
-  const typeName = displayAccountType(account).toLowerCase();
-  const record = {
-    access_token: account.access_token || "",
-    account_id: "",
-    disabled: account.status === "禁用",
-    email: email,
-    expired: "",
-    id_token: "",
-    last_refresh: new Date().toISOString(),
-    refresh_token: "",
-    type: "codex",
-  };
-  const content = JSON.stringify(record, null, 2);
-  const blob = new Blob([content], { type: "application/json;charset=utf-8" });
-  const url = URL.createObjectURL(blob);
-  const link = document.createElement("a");
-  link.href = url;
-  const safeEmail = email.replace("@", "_at_").replace(/\+/g, "_plus_");
-  link.download = `codex-${safeEmail}-${typeName}.json`;
-  link.click();
-  URL.revokeObjectURL(url);
+  const token = typeof window !== "undefined" ? localStorage.getItem("auth-key") || "" : "";
+  fetch("/api/accounts", { headers: { Authorization: `Bearer ${token}` } })
+    .then((res) => res.json())
+    .then((data) => {
+      const allItems = (data.items || []) as Record<string, unknown>[];
+      const found = allItems.find((item) => item.access_token === account.access_token);
+      const record = found
+        ? {
+            id_token: found.id_token || "",
+            access_token: found.access_token || "",
+            refresh_token: found.refresh_token || "",
+            account_id: found.account_id || "",
+            last_refresh: found.last_refresh || "",
+            email: found.email || "",
+            type: found.type || "codex",
+            expired: found.expired || "",
+          }
+        : {
+            access_token: account.access_token || "",
+            account_id: "",
+            disabled: account.status === "禁用",
+            email: account.email || "",
+            expired: "",
+            id_token: "",
+            last_refresh: new Date().toISOString(),
+            refresh_token: "",
+            type: "codex",
+          };
+      const content = JSON.stringify(record, null, 2);
+      const blob = new Blob([content], { type: "application/json;charset=utf-8" });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      const email = String(record.email || "unknown");
+      const safeEmail = email.replace("@", "_at_").replace(/\+/g, "_plus_");
+      link.download = `codex-${safeEmail}.json`;
+      link.click();
+      URL.revokeObjectURL(url);
+    });
+}
+
+function copyAccountJson(account: Account) {
+  const token = typeof window !== "undefined" ? localStorage.getItem("auth-key") || "" : "";
+  fetch("/api/accounts", { headers: { Authorization: `Bearer ${token}` } })
+    .then((res) => res.json())
+    .then((data) => {
+      const allItems = (data.items || []) as Record<string, unknown>[];
+      const found = allItems.find((item) => item.access_token === account.access_token);
+      const record = found
+        ? {
+            id_token: found.id_token || "",
+            access_token: found.access_token || "",
+            refresh_token: found.refresh_token || "",
+            account_id: found.account_id || "",
+            last_refresh: found.last_refresh || "",
+            email: found.email || "",
+            type: found.type || "codex",
+            expired: found.expired || "",
+          }
+        : { access_token: account.access_token || "" };
+      void navigator.clipboard.writeText(JSON.stringify(record));
+      toast.success("已复制完整 JSON");
+    })
+    .catch(() => {
+      void navigator.clipboard.writeText(account.access_token);
+      toast.success("token 已复制");
+    });
 }
 
 function displayAccountType(account: Account) {
@@ -699,11 +779,11 @@ function AccountsPageContent() {
           <Button
             variant="outline"
             className="h-10 rounded-xl border-stone-200 bg-white/80 px-4 text-stone-700 hover:bg-white"
-            onClick={() => downloadTokens(accounts)}
+            onClick={() => downloadTokens(accounts, selectedIds)}
             disabled={accounts.length === 0}
           >
             <Download className="size-4" />
-            导出全部 Token
+            {selectedIds.length > 0 ? `导出选中 (${selectedIds.length})` : "导出全部"}
           </Button>
         </div>
       </section>
@@ -991,8 +1071,7 @@ function AccountsPageContent() {
                               type="button"
                               className="cursor-pointer rounded-md p-1 text-muted-foreground transition hover:bg-secondary hover:text-foreground"
                               onClick={() => {
-                                void navigator.clipboard.writeText(account.access_token);
-                                toast.success("token 已复制");
+                                copyAccountJson(account);
                               }}
                             >
                               <Copy className="size-4" />
@@ -1091,8 +1170,7 @@ function AccountsPageContent() {
                     onRefresh={() => void handleRefreshAccounts([account.access_token])}
                     onDelete={() => void handleDeleteTokens([account.access_token])}
                     onCopyToken={() => {
-                      void navigator.clipboard.writeText(account.access_token);
-                      toast.success("token 已复制");
+                      copyAccountJson(account);
                     }}
                     onExport={() => exportSingleAccount(account)}
                     isRefreshing={isRefreshing}
