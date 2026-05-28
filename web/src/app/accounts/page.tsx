@@ -52,6 +52,7 @@ import {
 } from "@/lib/api";
 import { useAuthGuard } from "@/lib/use-auth-guard";
 import { cn } from "@/lib/utils";
+import { httpRequest } from "@/lib/request";
 
 import { AccountImportDialog } from "./components/account-import-dialog";
 
@@ -153,11 +154,9 @@ function maskToken(token?: string) {
 
 function downloadTokens(accounts: Account[], selectedIds: string[] = []) {
   // 从后端拉完整数据（含 refresh_token 等），导出 CPA JSON 格式
-  const token = typeof window !== "undefined" ? localStorage.getItem("auth-key") || "" : "";
-  fetch("/api/accounts", { headers: { Authorization: `Bearer ${token}` } })
-    .then((res) => res.json())
+  httpRequest<{ items: Record<string, unknown>[] }>("/api/accounts")
     .then((data) => {
-      const allItems = (data.items || []) as Record<string, unknown>[];
+      const allItems = data.items || [];
       // 如果有选中的，只导出选中的；否则导出全部
       const selectedSet = new Set(selectedIds);
       const filtered = selectedSet.size > 0
@@ -198,11 +197,9 @@ function downloadTokens(accounts: Account[], selectedIds: string[] = []) {
 }
 
 function exportSingleAccount(account: Account) {
-  const token = typeof window !== "undefined" ? localStorage.getItem("auth-key") || "" : "";
-  fetch("/api/accounts", { headers: { Authorization: `Bearer ${token}` } })
-    .then((res) => res.json())
+  httpRequest<{ items: Record<string, unknown>[] }>("/api/accounts")
     .then((data) => {
-      const allItems = (data.items || []) as Record<string, unknown>[];
+      const allItems = data.items || [];
       const found = allItems.find((item) => item.access_token === account.access_token);
       const record = found
         ? {
@@ -240,11 +237,9 @@ function exportSingleAccount(account: Account) {
 }
 
 function copyAccountJson(account: Account) {
-  const token = typeof window !== "undefined" ? localStorage.getItem("auth-key") || "" : "";
-  fetch("/api/accounts", { headers: { Authorization: `Bearer ${token}` } })
-    .then((res) => res.json())
+  httpRequest<{ items: Record<string, unknown>[] }>("/api/accounts")
     .then((data) => {
-      const allItems = (data.items || []) as Record<string, unknown>[];
+      const allItems = data.items || [];
       const found = allItems.find((item) => item.access_token === account.access_token);
       const record = found
         ? {
