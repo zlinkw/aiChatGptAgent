@@ -1,8 +1,4 @@
-<h1 align="center">
-  <img src="assets/logo.png" alt="ChatGPT2API" width="72" height="72" />
-  <br />
-  ChatGPT2API
-</h1>
+<h1 align="center">ChatGPT2API</h1>
 
 <p align="center">
   对 ChatGPT 官网图片生成 / 编辑能力的逆向封装。<br />
