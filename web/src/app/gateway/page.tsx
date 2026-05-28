@@ -181,7 +181,14 @@ function GatewayContent() {
             <code className="flex-1 font-data text-[12px] text-foreground">gpt-image-2（画图）· auto / gpt-5（文本）· claude-* / gemini-*（中转）</code>
           </div>
         </div>
-        <p className="text-[11px] text-muted-foreground mt-3">请求示例：<code className="text-[11px]">curl {typeof window !== "undefined" ? window.location.origin : entryUrl}/v1/models -H &quot;Authorization: Bearer 你的Key&quot;</code></p>
+        <p className="text-[11px] text-muted-foreground mt-3">请求示例：</p>
+        <div className="mt-2 rounded-lg border border-border bg-secondary/30 px-3 py-2.5 overflow-x-auto">
+          <code className="text-[11px] font-data text-foreground whitespace-pre">{`curl ${typeof window !== "undefined" ? window.location.origin : entryUrl}/v1/chat/completions \\
+  -H "Authorization: Bearer ${config.client_keys.find(k => k.enabled)?.key || "你的Key"}" \\
+  -H "Content-Type: application/json" \\
+  -d '{"model":"auto","messages":[{"role":"user","content":"你好"}]}'`}</code>
+          <button type="button" className="ml-2 inline-flex cursor-pointer rounded p-1 text-muted-foreground hover:text-foreground align-top" onClick={() => { const cmd = `curl ${typeof window !== "undefined" ? window.location.origin : entryUrl}/v1/chat/completions -H "Authorization: Bearer ${config.client_keys.find(k => k.enabled)?.key || "你的Key"}" -H "Content-Type: application/json" -d '{"model":"auto","messages":[{"role":"user","content":"你好"}]}'`; void navigator.clipboard.writeText(cmd); toast.success("已复制 curl 命令"); }}><Copy className="size-3.5" /></button>
+        </div>
       </section>
 
       {/* 配置区 */}
