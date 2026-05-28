@@ -193,11 +193,10 @@ def create_router() -> APIRouter:
         from services.openai_api_backend import is_api_backend_enabled, chat_completion as api_chat
         is_api_model = model.startswith("claude") or model.startswith("gemini") or model.startswith("deepseek")
         if is_api_backend_enabled() and is_api_model:
-            async def _api_handle(p):
+            def _api_handle(p):
                 messages = p.get("messages", [])
                 stream = p.get("stream", False)
                 if stream:
-                    from fastapi.responses import StreamingResponse
                     import json as _json
 
                     def _gen():
@@ -206,10 +205,8 @@ def create_router() -> APIRouter:
                             yield f"data: {_json.dumps(chunk)}\n\n"
                         yield "data: [DONE]\n\n"
 
-                    return StreamingResponse(_gen(), media_type="text/event-stream")
-                else:
-                    result = await run_in_threadpool(api_chat, messages, model=model, stream=False)
-                    return result
+                    return _gen()
+                return api_chat(messages, model=model, stream=False)
             return await call.run(_api_handle, payload)
 
         return await call.run(openai_v1_chat_complete.handle, payload)
