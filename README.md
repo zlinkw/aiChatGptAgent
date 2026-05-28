@@ -33,30 +33,100 @@ docker compose up -d
 
 升级：`docker compose pull && docker compose up -d`
 
-## 怎么用
+## 怎么接入
 
-部署好之后，在你的 AI 客户端里填：
+部署好之后，这个项目就是一个 **OpenAI 兼容的 API 中转服务**。你（或你的用户）在任何支持自定义 API 地址的客户端里填三个东西就能用：
 
-| 配置项 | 填什么 |
-|---|---|
-| API Base URL | `http://你的IP:3001/v1` |
-| API Key | 你在 config.json 里设的 `auth-key` |
-| 模型 | `gpt-image-2`（画图）或 `auto`（文本） |
+| 配置项 | 填什么 | 示例 |
+|---|---|---|
+| API Base URL | 你部署的地址 + `/v1` | `http://你的IP:3001/v1` |
+| API Key | config.json 里的 `auth-key` | `sk-xxxx` |
+| 模型 | 看下面的模型表 | `gpt-image-2` |
 
-支持的客户端：Cherry Studio、ChatBox、New API、NextChat、OpenCat、任何支持 OpenAI API 的工具。
+### 可用模型
+
+| 模型名 | 用途 | 说明 |
+|---|---|---|
+| `gpt-image-2` | 画图 | 默认画图模型 |
+| `codex-gpt-image-2` | 画图（Codex 通道） | 需 Plus/Team/Pro 账号 |
+| `auto` | 文本聊天 | 自动选号池里最好的模型 |
+| `gpt-5` / `gpt-5-mini` | 文本聊天 | 指定模型 |
+| `claude-*` / `gemini-*` / `deepseek-*` | 中转文本 | 走中转 API，需在设置页配置 |
+
+### 支持的客户端
+
+随便一个支持自定义 OpenAI API 的工具都能接：
+
+- **Cherry Studio** — 设置 → 模型提供商 → OpenAI 兼容 → 填 Base URL + Key
+- **ChatBox** — 设置 → AI 提供商 → OpenAI API Compatible
+- **New API / One API** — 添加渠道 → 类型选 OpenAI → 填代理地址 + Key
+- **NextChat** — 设置 → API Key + Endpoint
+- **OpenCat** — 设置 → 自定义 API
+- **Lobe Chat** — 设置 → 语言模型 → OpenAI → 填 API 代理地址
+- **任何支持 OpenAI SDK 的代码** — 改一下 `base_url` 就行
+
+### 代码接入示例
+
+**Python（openai SDK）：**
+
+```python
+from openai import OpenAI
+
+client = OpenAI(
+    base_url="http://你的IP:3001/v1",
+    api_key="你的auth-key",
+)
+
+# 画图
+result = client.images.generate(
+    model="gpt-image-2",
+    prompt="一只太空猫",
+    n=1,
+)
+
+# 聊天
+chat = client.chat.completions.create(
+    model="auto",
+    messages=[{"role": "user", "content": "你好"}],
+)
+```
+
+**curl：**
+
+```bash
+# 画图
+curl http://你的IP:3001/v1/images/generations \
+  -H "Authorization: Bearer 你的auth-key" \
+  -H "Content-Type: application/json" \
+  -d '{"model":"gpt-image-2","prompt":"一只太空猫","n":1}'
+
+# 聊天
+curl http://你的IP:3001/v1/chat/completions \
+  -H "Authorization: Bearer 你的auth-key" \
+  -H "Content-Type: application/json" \
+  -d '{"model":"auto","messages":[{"role":"user","content":"你好"}]}'
+```
+
+### 多用户分发
+
+如果你想把 API 分给多个人用，每人限额：
+
+1. Web 面板 → 设置 → 用户管理
+2. 创建 user key（每个 key 可以设独立额度）
+3. 把 user key 发给对方，对方用这个 key 代替 auth-key 即可
 
 ## API 速查
 
 ```
 GET  /v1/models              → 可用模型列表
 POST /v1/images/generations  → 文生图
-POST /v1/images/edits        → 图生图
-POST /v1/chat/completions    → 聊天（图片/文本）
-POST /v1/messages            → Anthropic 兼容
+POST /v1/images/edits        → 图生图（上传参考图）
+POST /v1/chat/completions    → 聊天（文本/画图都走这里）
+POST /v1/messages            → Anthropic 兼容格式
 POST /v1/responses           → Responses API
 ```
 
-所有请求加 Header：`Authorization: Bearer <你的auth-key>`
+所有请求加 Header：`Authorization: Bearer <你的key>`
 
 ## 配置说明
 
