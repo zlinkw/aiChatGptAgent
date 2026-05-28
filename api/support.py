@@ -27,9 +27,23 @@ def _legacy_admin_identity(token: str) -> dict[str, object] | None:
     return None
 
 
+def _gateway_client_identity(token: str) -> dict[str, object] | None:
+    """检查 token 是否为 Gateway 已启用的 client key。"""
+    try:
+        from services.gateway_service import gateway_service
+        config = gateway_service.get_config()
+        keys = config.get("client_keys") or []
+        for k in keys:
+            if k.get("key") == token and k.get("enabled"):
+                return {"id": f"gateway-{token[:8]}", "name": "Gateway Client", "role": "user", "unlimited": True}
+    except Exception:
+        pass
+    return None
+
+
 def require_identity(authorization: str | None) -> dict[str, object]:
     token = extract_bearer_token(authorization)
-    identity = _legacy_admin_identity(token) or auth_service.authenticate(token)
+    identity = _legacy_admin_identity(token) or auth_service.authenticate(token) or _gateway_client_identity(token)
     if identity is None:
         raise HTTPException(status_code=401, detail={"error": "密钥无效或已失效，请重新登录"})
     return identity
