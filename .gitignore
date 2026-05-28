@@ -1,0 +1,46 @@
+# Python-generated files
+__pycache__/
+*.py[oc]
+build/
+dist/
+wheels/
+*.egg-info
+web_dist
+# Virtual environments
+.venv
+.idea
+data
+config.json
+edit
+
+docker-compose-local.yml
+
+.claude/settings.local.json
+CLAUDE.md
+
+# IDE / 工具配置
+.kiro/
+.vscode/
+
+# Environment variables
+.env
+.env.local
+
+# Database files
+*.db
+*.sqlite
+*.sqlite3
+
+# Git cache
+git_cache/
+
+# 账号凭据 / 个人 token 备份（防止误传）
+old_codex-*.json
+old_chatgpt-*.json
+*@proton.me*.json
+*@gmail.com*.json
+*@outlook.com*.json
+*-free.json
+*-plus.json
+*-team.json
+*-pro.json
