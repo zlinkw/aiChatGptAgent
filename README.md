@@ -108,6 +108,36 @@ POST /v1/responses           → Responses API
 | **Inbucket** | 自建实例的 API 地址 + 域名 |
 | **YYDS Mail** | API Key + 域名 |
 
+### 搭建 Cloudflare Temp Email（推荐）
+
+项目地址：[dreamhunter2333/cloudflare_temp_email](https://github.com/dreamhunter2333/cloudflare_temp_email)
+部署文档：[temp-mail-docs.awsl.uk](https://temp-mail-docs.awsl.uk/)
+
+**你需要：**
+- 一个 Cloudflare 账号（免费）
+- 一个域名（托管到 Cloudflare）
+
+**部署步骤：**
+
+1. Fork [cloudflare_temp_email](https://github.com/dreamhunter2333/cloudflare_temp_email) 到你自己的 GitHub
+2. 在 Cloudflare Dashboard 创建一个 **D1 数据库**（名字随意，比如 `temp-email`）
+3. 在 Cloudflare Dashboard → Email Routing 开启邮件路由，把你的域名指向 Worker
+4. 通过 GitHub Actions 一键部署（仓库里有现成的 workflow），或者用 `wrangler` CLI 手动部署
+5. 部署完成后你会得到一个地址（比如 `https://mail.你的域名.com`）
+6. 进入后台设置 **admin 密码**
+
+**在注册机里怎么配：**
+
+| 配置项 | 填什么 |
+|---|---|
+| API 地址 | `https://mail.你的域名.com`（你部署的实例地址） |
+| Admin 密码 | 你在后台设的管理员密码 |
+| 域名 | 你绑定到 Cloudflare Email Routing 的域名，比如 `example.com` |
+
+> [!TIP]
+> 支持配置多个域名轮换使用，某个域名被 OpenAI 拉黑后切换下一个。
+> 还支持通配符域名（`*.example.com`），每次注册自动生成随机子域名，降低被封风险。
+
 ### 代理池配置
 
 支持两种模式：
