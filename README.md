@@ -84,11 +84,11 @@ POST /v1/responses           → Responses API
 
 号池管理：
 
-![accounts](assets/accounts.png)
+![accounts](assets/accounts.png?v=2)
 
 在线画图：
 
-![image-studio](assets/image-studio.png)
+![image-studio](assets/image-studio.png?v=2)
 
 设计工具：
 
@@ -96,15 +96,15 @@ POST /v1/responses           → Responses API
 
 注册机：
 
-![register](assets/register.png)
+![register](assets/register.png?v=2)
 
 日志管理：
 
-![logs](assets/logs.png)
+![logs](assets/logs.png?v=2)
 
 图片管理：
 
-![image-manager](assets/image-manager.png)
+![image-manager](assets/image-manager.png?v=2)
 
 ## 交流 & 赞赏
 
