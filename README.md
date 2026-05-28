@@ -78,34 +78,16 @@
 
 ## 快速开始
 
-发布镜像支持 `linux/amd64` 与 `linux/arm64`，x86 服务器与 Apple Silicon / ARM Linux 设备会自动拉取匹配架构。
-
-### 方式一：使用预构建镜像（推荐）
-
-适合大多数用户。直接拉取 GHCR 上的官方镜像，无需本地构建。
+支持 `linux/amd64` 与 `linux/arm64`，x86 服务器与 Apple Silicon / ARM Linux 均可。
 
 ```bash
 git clone https://github.com/boteSu/aiChatGptAgent.git
 cd aiChatGptAgent
-
-# 1. 准备配置文件（首次部署）
-cp config.example.json config.json
-#    打开 config.json，把 auth-key 改成强随机字符串
-#    也可以在 docker-compose.yml 中通过 CHATGPT2API_AUTH_KEY 环境变量覆盖
-
-# 2. 启动
+cp config.example.json config.json   # 首次部署，改 auth-key 为强随机字符串
 docker compose up -d
 ```
 
-启动完成后：
-
-| 入口 | 地址 |
-|---|---|
-| Web 面板 | `http://localhost:3001` |
-| API Base | `http://localhost:3001/v1` |
-| 数据目录 | `./data`（持久化） |
-
-常用命令：
+部署完成，打开 `http://localhost:3001` 即可使用。API Base 为 `http://localhost:3001/v1`。
 
 ```bash
 docker compose logs -f      # 查看日志
@@ -114,44 +96,37 @@ docker compose pull         # 拉取最新镜像
 docker compose down         # 停止并移除容器
 ```
 
-### 方式二：从源码本地构建
+<details>
+<summary>从源码本地构建（开发者）</summary>
 
-适合需要修改代码 / 自定义前端 UI 的开发者。前端用 Node 在本地构建（产物挂载进容器），后端 Python 代码通过 volume 挂载，**修改后只需重启容器即可生效**。
+适合需要修改代码 / 自定义 UI 的开发者。
 
 ```bash
 git clone https://github.com/boteSu/aiChatGptAgent.git
 cd aiChatGptAgent
 
-# 1. 构建前端产物（生成 web_dist/）
-cd web
-npm install
-npm run build
-cd ..
+# 构建前端
+cd web && npm install && npm run build && cd ..
 rm -rf web_dist && cp -r web/out web_dist
 
-# 2. 启动本地构建版本
+# 启动（容器名 chatgpt2api-local）
 docker compose -f docker-compose.local.yml up -d --build
 ```
 
-容器名为 `chatgpt2api-local`，与方式一隔离。
+修改后端代码：`docker restart chatgpt2api-local`
 
-修改后端代码后：
-
-```bash
-docker restart chatgpt2api-local
-```
-
-修改前端源码后（重新走前端构建流程）：
+修改前端源码：
 
 ```bash
 cd web && rm -rf .next out && npm run build && cd ..
 rm -rf web_dist && cp -r web/out web_dist
 docker restart chatgpt2api-local
-# 浏览器需 Cmd + Shift + R 强制刷新
 ```
 
 > [!TIP]
-> 不要用 `docker compose build --no-cache`，容器内访问 Google Fonts 会失败导致前端构建中断。前端构建始终在宿主机完成。
+> 不要用 `docker compose build --no-cache`，容器内无法访问 Google Fonts 会导致构建失败。前端构建始终在宿主机完成。
+
+</details>
 
 ## 配置
 
