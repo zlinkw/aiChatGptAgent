@@ -395,6 +395,10 @@ curl http://localhost:3001/v1/responses \
 
 ![image-studio](assets/image-studio.png)
 
+设计工具：
+
+![design](assets/design.png)
+
 注册机：
 
 ![register](assets/register.png)
