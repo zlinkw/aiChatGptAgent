@@ -106,26 +106,18 @@ POST /v1/responses           → Responses API
 
 ![image-manager](assets/image-manager.png)
 
-## 交流群
-
-遇到问题先看上面的文档，搞不定加群问。
-
-> [!WARNING]
-> 请勿在群内传播账号、密钥等敏感信息。
+## 交流 & 赞赏
 
 <p align="center">
   <img src="assets/qq-group.png" alt="QQ 交流群" width="280" />
-  <br />
-  QQ 群号：805700149
-</p>
-
-## 赞赏支持
-
-如果这个项目对你有帮助，谢谢大家的支持 ☕
-
-<p align="center">
+  &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
   <img src="assets/wechat-pay.jpg" alt="微信赞赏" width="280" />
+  <br />
+  QQ 群：805700149 &nbsp;&nbsp;|&nbsp;&nbsp; 微信赞赏
 </p>
+
+> [!WARNING]
+> 请勿在群内传播账号、密钥等敏感信息。
 
 ## License
 
