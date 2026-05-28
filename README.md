@@ -80,6 +80,82 @@ POST /v1/responses           → Responses API
 3. **sub2api** — 填 sub2api 服务器地址
 4. **直接粘贴** — 粘 access_token 就行
 
+## 注册机
+
+自动注册 ChatGPT 账号，注册成功后自动入号池。
+
+### 你需要准备什么
+
+| 必须 | 说明 |
+|---|---|
+| **代理** | 海外 IP，支持 HTTP / SOCKS5。建议用住宅代理或代理池（711Proxy 等），数据中心 IP 容易被拦 |
+| **临时邮箱服务** | 用来接收 OpenAI 的验证码。支持多种后端（见下面列表） |
+
+| 可选 | 说明 |
+|---|---|
+| **SMS 接码平台** | 部分账号注册时会要求手机验证，需要接码服务才能过。没配置的话遇到手机验证会直接失败跳过 |
+| **CPA 导出** | 注册成功后自动把账号推到远程 CPA 服务器 |
+
+### 支持的邮箱后端
+
+| Provider | 需要什么 |
+|---|---|
+| **Cloudflare Temp Email** | 自建实例的 API 地址 + admin 密码 + 域名 |
+| **TempMail.lol** | API Key（付费），可选自定义域名 |
+| **DuckMail** | API Key + 域名 |
+| **GPTMail** | API Key，可选域名 |
+| **MoEmail** | 自建实例的 API 地址 + API Key + 域名 |
+| **Inbucket** | 自建实例的 API 地址 + 域名 |
+| **YYDS Mail** | API Key + 域名 |
+
+### 代理池配置
+
+支持两种模式：
+
+**模式 A：用户名/密码（推荐）** — 每次注册自动换 session ID 实现不同 IP
+
+```json
+{
+  "enabled": true,
+  "mode": "userpass",
+  "host": "proxy.example.com",
+  "port": 1000,
+  "username": "your_username",
+  "password": "your_password",
+  "protocol": "http"
+}
+```
+
+**模式 B：API 提取** — 调代理商接口批量拉 IP，轮询使用
+
+```json
+{
+  "enabled": true,
+  "mode": "api",
+  "api_url": "https://你的代理商提取链接",
+  "api_protocol": "http",
+  "api_refresh_seconds": 300
+}
+```
+
+### 怎么启动
+
+1. 打开 Web 面板 → 侧边栏「注册机」
+2. 配置邮箱后端（填 API 地址、Key、域名）
+3. 配置代理（单代理或代理池）
+4. 设置注册模式：
+   - **按数量** — 注册 N 个就停
+   - **按额度** — 号池总额度达到目标就停
+   - **按可用数** — 号池正常账号达到目标就停
+5. 点「启动」，实时看日志
+
+### 注意事项
+
+- 邮箱域名被 OpenAI 封了会注册失败，换域名就行
+- 代理 IP 质量直接决定成功率，住宅代理 > 数据中心
+- 并发线程数别开太高（3-5 够了），容易触发风控
+- 注册成功的账号自动进号池，不需要手动导入
+
 ## 截图
 
 号池管理：
