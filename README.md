@@ -18,6 +18,7 @@
 - 🎯 **设计工具** — AI 辅助 UI 设计
 - 📦 **号池管理** — 批量导入账号，自动轮询、自动剔除失效的
 - 🤖 **注册机** — 自动注册 ChatGPT 账号，产出完整凭证（含 `refresh_token`）
+- 🧩 **Chrome 扩展** — Codex Pool 自动授权助手，隐私窗自动登录 + 自动同意，0 点击完成 device 授权
 - 🔀 **反向代理** — 号池账号封装为标准 OpenAI API，支持多用户分发、Key 管理、自动轮询调度
 - 📊 **日志 & 图片管理** — 全部可视化
 
@@ -282,6 +283,48 @@ POST /v1/responses           → Responses API
 - 代理 IP 质量直接决定成功率，住宅代理 > 数据中心
 - 并发线程数别开太高（3-5 够了），容易触发风控
 - 注册成功的账号自动进号池，不需要手动导入
+
+## Chrome 扩展：Codex Pool 自动授权助手
+
+配套 Chrome 扩展，让 Codex Pool 页面的「打开授权页」按钮完全自动化：
+
+- 🔒 自动开 Chrome 隐私窗口
+- ✍️ 自动填邮箱密码登录 ChatGPT
+- ✅ 自动点"继续 → 同意"完成 device 授权
+- 🚪 完成后自动关闭隐私窗口
+
+每个号 0 点击，平均 5-10 秒完成授权。
+
+### 安装
+
+1. Chrome 地址栏输入 `chrome://extensions/`
+2. 右上角打开「开发者模式」
+3. 点「加载已解压的扩展程序」，选择项目里的：
+   ```
+   extensions/codex-incognito-opener
+   ```
+4. 在扩展卡片上点「详细信息」→ 打开 **「在隐身模式下允许」**（必做）
+
+### 配置
+
+扩展工具栏图标 → 右键「选项」，填写：
+
+| 字段 | 说明 |
+|------|------|
+| ChatGPT2API 服务地址 | 默认 `http://127.0.0.1:3001` |
+| Admin Key | `config.json` 里的 `auth-key` |
+| 自动填邮箱密码 | 推荐打开 |
+| 自动点继续/同意 | 推荐打开 |
+| 授权完成自动关闭 | 推荐打开 |
+
+### 使用
+
+1. 打开 Codex Pool 页面（`/codex-pool`）
+2. 生成设备码 → 点「打开授权页」
+3. 隐私窗自动弹出 → 自动登录 → 自动同意 → 自动关闭，一气呵成
+
+> [!TIP]
+> 详细说明见 [`extensions/codex-incognito-opener/README.md`](extensions/codex-incognito-opener/README.md)
 
 ## 截图
 
