@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <style>
+    body { font-family: -apple-system, system-ui, sans-serif; padding: 12px; min-width: 280px; font-size: 12px; margin: 0; }
+    h2 { font-size: 13px; margin: 0 0 8px 0; }
+    .row { display: flex; align-items: center; gap: 6px; margin: 4px 0; }
+    .ok { color: #10b981; }
+    .warn { color: #f59e0b; }
+    .err { color: #ef4444; }
+    .key { color: #6b7280; font-family: monospace; }
+    code { font-size: 11px; }
+    button { width: 100%; padding: 6px; margin-top: 8px; background: #7c3aed; color: white; border: 0; border-radius: 4px; cursor: pointer; font-size: 12px; }
+    button:hover { background: #6d28d9; }
+    .hint { color: #6b7280; font-size: 11px; margin-top: 6px; line-height: 1.4; }
+  </style>
+</head>
+<body>
+  <h2>Codex Pool 助手</h2>
+  <div id="status"></div>
+  <button id="open_options">打开设置</button>
+  <button id="test_api" style="background:#10b981;">测试后端连通</button>
+  <div id="api_result" class="hint"></div>
+  <div class="hint" style="margin-top:8px;">
+    用法：到 <code>localhost:3001/codex-pool</code> 点"打开授权页"，会自动开隐私窗+登录+同意。
+  </div>
+  <script src="popup.js"></script>
+</body>
+</html>

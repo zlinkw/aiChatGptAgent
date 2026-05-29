@@ -189,24 +189,50 @@ def create_router() -> APIRouter:
         call = LoggedCall(identity, "/v1/chat/completions", model, "文本生成", request_text=request_preview)
         await filter_or_log(call, request_preview)
 
-        # 判断是否走中转 API（claude 模型或中转已启用且非号池模型）
-        from services.openai_api_backend import is_api_backend_enabled, chat_completion as api_chat
-        is_api_model = model.startswith("claude") or model.startswith("gemini") or model.startswith("deepseek")
+        # 判断是否走中转 API（claude / gemini / deepseek / gpt 系列且中转已启用）
+        from services.openai_api_backend import (
+            is_api_backend_enabled,
+            chat_completion as api_chat,
+            chat_completion_raw_stream as api_chat_raw_stream,
+        )
+        is_api_model = (
+            model.startswith("claude")
+            or model.startswith("gemini")
+            or model.startswith("deepseek")
+            # CLIProxyAPI 通过 OAuth 把号池接到 OpenAI 真原生 Codex 通道，
+            # 这些 model 走中转分支才有 native function call
+            or model.startswith("gpt-5")
+            or model.startswith("gpt-4")
+            or model == "gpt-5-codex"
+            or model.startswith("o1")
+            or model.startswith("o3")
+            or model.startswith("o4")
+        )
         if is_api_backend_enabled() and is_api_model:
+            # 透传给上游中转的字段：messages/model/stream 单独处理，
+            # 其余按白名单原样转发，特别是 tools / tool_choice / parallel_tool_calls
+            # 必须保留，否则客户端的 function calling 直接哑掉
+            forward_keys = (
+                "temperature", "top_p", "n", "max_tokens", "max_completion_tokens",
+                "presence_penalty", "frequency_penalty", "stop", "logit_bias",
+                "user", "seed", "response_format",
+                "tools", "tool_choice", "parallel_tool_calls",
+                "logprobs", "top_logprobs", "reasoning_effort",
+                "stream_options", "modalities", "audio", "prediction",
+                "store", "metadata", "service_tier",
+            )
+
             def _api_handle(p):
-                messages = p.get("messages", [])
-                stream = p.get("stream", False)
+                messages = p.get("messages") or []
+                stream = bool(p.get("stream"))
+                forward = {k: p[k] for k in forward_keys if p.get(k) is not None}
                 if stream:
-                    import json as _json
+                    # 直接把上游 chunk dict yield 出去；sse_json_stream 会负责
+                    # `data: ...` 包装和 [DONE]，这样 delta.tool_calls / finish_reason
+                    # 等所有原生字段都能完整透出
+                    return api_chat_raw_stream(messages, model=model, **forward)
+                return api_chat(messages, model=model, stream=False, **forward)
 
-                    def _gen():
-                        for delta in api_chat(messages, model=model, stream=True):
-                            chunk = {"choices": [{"delta": {"content": delta}, "index": 0}], "model": model}
-                            yield f"data: {_json.dumps(chunk)}\n\n"
-                        yield "data: [DONE]\n\n"
-
-                    return _gen()
-                return api_chat(messages, model=model, stream=False)
             return await call.run(_api_handle, payload)
 
         return await call.run(openai_v1_chat_complete.handle, payload)
@@ -219,6 +245,32 @@ def create_router() -> APIRouter:
         request_preview = request_text(payload.get("input"), payload.get("instructions"))
         call = LoggedCall(identity, "/v1/responses", model, "Responses", request_text=request_preview)
         await filter_or_log(call, request_preview)
+
+        # Codex CLI / claude-code / aider 走 Responses 协议时，命中"真原生 function call"
+        # 模型就让 CLIProxyAPI 那条中转透传，下游就是 OAuth → OpenAI Codex 通道。
+        from services.openai_api_backend import (
+            is_api_backend_enabled,
+            responses_create as api_responses,
+            responses_stream_events as api_responses_stream,
+        )
+        is_api_model = (
+            model.startswith("claude")
+            or model.startswith("gemini")
+            or model.startswith("deepseek")
+            or model.startswith("gpt-5")
+            or model.startswith("gpt-4")
+            or model == "gpt-5-codex"
+            or model.startswith("o1")
+            or model.startswith("o3")
+            or model.startswith("o4")
+        )
+        if is_api_backend_enabled() and is_api_model:
+            def _api_handle(p):
+                if p.get("stream"):
+                    return api_responses_stream(p)
+                return api_responses(p)
+            return await call.run(_api_handle, payload)
+
         return await call.run(openai_v1_response.handle, payload)
 
     @router.post("/v1/messages")
@@ -234,6 +286,32 @@ def create_router() -> APIRouter:
         request_preview = request_text(payload.get("system"), payload.get("messages"), payload.get("tools"))
         call = LoggedCall(identity, "/v1/messages", model, "Messages", request_text=request_preview)
         await filter_or_log(call, request_preview)
+
+        # claude-code / aider claude 模式走原生 Anthropic Messages，
+        # 命中条件时透给 CLIProxyAPI（下游是 Claude OAuth 通道）。
+        from services.openai_api_backend import (
+            is_api_backend_enabled,
+            messages_create as api_messages,
+            messages_stream_events as api_messages_stream,
+        )
+        is_api_model = (
+            model.startswith("claude")
+            or model.startswith("gemini")
+            or model.startswith("deepseek")
+            or model.startswith("gpt-5")
+            or model.startswith("gpt-4")
+            or model == "gpt-5-codex"
+            or model.startswith("o1")
+            or model.startswith("o3")
+            or model.startswith("o4")
+        )
+        if is_api_backend_enabled() and is_api_model:
+            def _api_handle(p):
+                if p.get("stream"):
+                    return api_messages_stream(p)
+                return api_messages(p)
+            return await call.run(_api_handle, payload, sse="anthropic")
+
         return await call.run(anthropic_v1_messages.handle, payload, sse="anthropic")
 
     return router

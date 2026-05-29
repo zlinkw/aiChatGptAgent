@@ -40,22 +40,34 @@
 
 > **带 `refresh_token`**，可直接用于 CPA / sub2api / 其他号池管理工具导入，支持 token 自动续期。
 
-## 反向代理
+## 中转站接入
 
-项目部署后就是一个完整的 **OpenAI 兼容 API 反代服务**：
+项目部署后就是一个完整的 **OpenAI 兼容 API 中转站**，号池在内部自动轮询，对外暴露标准接口，任何支持 OpenAI 协议的客户端都能直接接：
 
 ```
-你的号池账号 → ChatGPT2API → 标准 OpenAI API → 给任何客户端/用户使用
+你的号池账号 → ChatGPT2API（中转站）→ 标准 OpenAI API → 客户端 / 用户
 ```
 
 **核心能力：**
 - 对外暴露标准 OpenAI API（`/v1/chat/completions`、`/v1/images/generations` 等）
-- 号池内部自动轮询调度，对用户透明
+- 号池内部自动轮询调度、失效剔除，对用户透明
 - 支持生成多个客户端 Key，每个 Key 独立管理
 - 支持多用户分发 + 额度控制
 - Web 面板内置接入指南，一键复制 Base URL / Key / curl 示例
 
-**快速验证：**
+### 接入教程
+
+**第 1 步：拿到接入信息**
+
+打开 Web 面板 → 设置 → 接入指南，复制三样东西：
+
+| 配置项 | 说明 | 示例 |
+|---|---|---|
+| Base URL | 你的部署地址 + `/v1` | `http://你的IP:3001/v1` |
+| API Key | `config.json` 里的 `auth-key`，或 Web 面板生成的 user key | `sk-xxxx` |
+| 模型名 | 见下方模型表 | `auto` / `gpt-image-2` |
+
+**第 2 步：命令行验证一下**
 
 ```bash
 curl http://你的IP:3001/v1/chat/completions \
@@ -64,7 +76,48 @@ curl http://你的IP:3001/v1/chat/completions \
   -d '{"model":"auto","messages":[{"role":"user","content":"你好"}]}'
 ```
 
-收到 JSON 回复就说明反代正常工作。
+收到 JSON 回复说明中转站正常工作，可以接客户端了。
+
+**第 3 步：客户端接入**
+
+任何支持自定义 OpenAI API 的客户端都能用，填 Base URL + API Key 即可：
+
+- **Cherry Studio** — 设置 → 模型服务 → 添加 → OpenAI 兼容 → 填 Base URL + Key
+- **ChatBox** — 设置 → AI 提供方 → OpenAI API Compatible
+- **NextChat / LobeChat** — 设置 → API Key + Endpoint
+- **OpenCat / Raycast AI** — 自定义 API 地址
+- **沉浸式翻译 / 划词翻译** — 翻译服务选 OpenAI → 填 Base URL + Key
+- **New API / One API** — 添加渠道 → 类型选 OpenAI → 填代理地址 + Key（再分发给下游）
+
+**第 4 步：多用户分发（可选）**
+
+想把 API 分给多个人用、每人单独限额：
+
+1. Web 面板 → 设置 → 用户管理 → 新建 user key
+2. 设置该 key 的额度、可用模型
+3. 把 user key 发给对方，对方用这个 key 代替 `auth-key` 即可
+
+**代码接入示例（Python）：**
+
+```python
+from openai import OpenAI
+
+client = OpenAI(
+    base_url="http://你的IP:3001/v1",
+    api_key="你的auth-key",
+)
+
+# 聊天
+chat = client.chat.completions.create(
+    model="auto",
+    messages=[{"role": "user", "content": "你好"}],
+)
+print(chat.choices[0].message.content)
+
+# 画图
+img = client.images.generate(model="gpt-image-2", prompt="一只太空猫", n=1)
+print(img.data[0].url)
+```
 
 ## 三步部署
 
@@ -79,17 +132,7 @@ docker compose up -d
 
 升级：`docker compose pull && docker compose up -d`
 
-## 怎么接入
-
-部署好之后，这个项目就是一个 **OpenAI 兼容的 API 中转服务**。你（或你的用户）在任何支持自定义 API 地址的客户端里填三个东西就能用：
-
-| 配置项 | 填什么 | 示例 |
-|---|---|---|
-| API Base URL | 你部署的地址 + `/v1` | `http://你的IP:3001/v1` |
-| API Key | config.json 里的 `auth-key` | `sk-xxxx` |
-| 模型 | 看下面的模型表 | `gpt-image-2` |
-
-### 可用模型
+## 可用模型
 
 | 模型名 | 用途 | 说明 |
 |---|---|---|
@@ -98,68 +141,6 @@ docker compose up -d
 | `auto` | 文本聊天 | 自动选号池里最好的模型 |
 | `gpt-5` / `gpt-5-mini` | 文本聊天 | 指定模型 |
 | `claude-*` / `gemini-*` / `deepseek-*` | 中转文本 | 走中转 API，需在设置页配置 |
-
-### 支持的客户端
-
-随便一个支持自定义 OpenAI API 的工具都能接：
-
-- **Cherry Studio** — 设置 → 模型提供商 → OpenAI 兼容 → 填 Base URL + Key
-- **ChatBox** — 设置 → AI 提供商 → OpenAI API Compatible
-- **New API / One API** — 添加渠道 → 类型选 OpenAI → 填代理地址 + Key
-- **NextChat** — 设置 → API Key + Endpoint
-- **OpenCat** — 设置 → 自定义 API
-- **Lobe Chat** — 设置 → 语言模型 → OpenAI → 填 API 代理地址
-- **任何支持 OpenAI SDK 的代码** — 改一下 `base_url` 就行
-
-### 代码接入示例
-
-**Python（openai SDK）：**
-
-```python
-from openai import OpenAI
-
-client = OpenAI(
-    base_url="http://你的IP:3001/v1",
-    api_key="你的auth-key",
-)
-
-# 画图
-result = client.images.generate(
-    model="gpt-image-2",
-    prompt="一只太空猫",
-    n=1,
-)
-
-# 聊天
-chat = client.chat.completions.create(
-    model="auto",
-    messages=[{"role": "user", "content": "你好"}],
-)
-```
-
-**curl：**
-
-```bash
-# 画图
-curl http://你的IP:3001/v1/images/generations \
-  -H "Authorization: Bearer 你的auth-key" \
-  -H "Content-Type: application/json" \
-  -d '{"model":"gpt-image-2","prompt":"一只太空猫","n":1}'
-
-# 聊天
-curl http://你的IP:3001/v1/chat/completions \
-  -H "Authorization: Bearer 你的auth-key" \
-  -H "Content-Type: application/json" \
-  -d '{"model":"auto","messages":[{"role":"user","content":"你好"}]}'
-```
-
-### 多用户分发
-
-如果你想把 API 分给多个人用，每人限额：
-
-1. Web 面板 → 设置 → 用户管理
-2. 创建 user key（每个 key 可以设独立额度）
-3. 把 user key 发给对方，对方用这个 key 代替 auth-key 即可
 
 ## API 速查
 

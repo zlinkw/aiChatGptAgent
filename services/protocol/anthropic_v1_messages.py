@@ -24,6 +24,7 @@ class MessageRequest:
     messages: list[dict[str, Any]]
     model: str
     tools: Any = None
+    choice: dict[str, Any] | None = None
 
 
 def _tool_meta(tool: dict[str, object]) -> tuple[str, str, object]:
@@ -34,7 +35,40 @@ def _tool_meta(tool: dict[str, object]) -> tuple[str, str, object]:
     return name, desc, schema
 
 
-def build_tool_prompt(tools: object) -> str:
+def _resolve_anthropic_tool_choice(body: dict[str, Any]) -> dict[str, Any]:
+    """Anthropic Messages API 的 tool_choice 形态：
+       {'type': 'auto'} / {'type': 'any'} / {'type': 'tool', 'name': '...'} / {'type': 'none'}
+       parallel 用 disable_parallel_tool_use 字段（取反）。
+    """
+    raw = body.get("tool_choice")
+    disable_parallel = bool(body.get("disable_parallel_tool_use") or False)
+    parallel_bool = not disable_parallel
+    if isinstance(raw, dict):
+        t = str(raw.get("type") or "").strip()
+        if t == "any":
+            return {"mode": "required", "forced_name": "", "parallel": parallel_bool}
+        if t == "tool":
+            name = str(raw.get("name") or "").strip()
+            if name:
+                return {"mode": "forced", "forced_name": name, "parallel": parallel_bool}
+        if t == "none":
+            return {"mode": "none", "forced_name": "", "parallel": parallel_bool}
+    return {"mode": "auto", "forced_name": "", "parallel": parallel_bool}
+
+
+def _apply_choice_filter_anthropic(calls: list[tuple[str, dict[str, Any]]], choice: dict[str, Any]) -> list[tuple[str, dict[str, Any]]]:
+    mode = choice.get("mode") or "auto"
+    if mode == "none":
+        return []
+    if mode == "forced" and choice.get("forced_name"):
+        forced = choice["forced_name"]
+        calls = [c for c in calls if c[0] == forced]
+    if not choice.get("parallel", True) and len(calls) > 1:
+        calls = calls[:1]
+    return calls
+
+
+def build_tool_prompt(tools: object, choice: dict[str, Any] | None = None) -> str:
     if not isinstance(tools, list):
         return ""
     blocks = []
@@ -46,6 +80,17 @@ def build_tool_prompt(tools: object) -> str:
             blocks.append(f"Tool: {name}\nDescription: {desc}\nParameters: {json.dumps(schema, ensure_ascii=False)}")
     if not blocks:
         return ""
+    extras: list[str] = []
+    mode = (choice or {}).get("mode") or "auto"
+    if mode == "required":
+        extras.append("TOOL CHOICE: ANY — you MUST call exactly one tool. Plain text answers are NOT allowed.")
+    elif mode == "forced":
+        forced = (choice or {}).get("forced_name", "")
+        if forced:
+            extras.append(f"TOOL CHOICE: TOOL — you MUST call the tool '{forced}' and ONLY this tool.")
+    if (choice or {}).get("parallel", True) is False:
+        extras.append("Do NOT emit more than one <tool_call>; pick the single best one.")
+    extras_text = ("\n" + "\n".join(extras)) if extras else ""
     return "Available tools:\n" + "\n".join(blocks) + """
 
 Tool use rules:
@@ -53,7 +98,7 @@ Tool use rules:
 - To call tools, output ONLY XML and no prose/markdown:
 <tool_calls><tool_call><tool_name>TOOL_NAME</tool_name><parameters><PARAM><![CDATA[value]]></PARAM></parameters></tool_call></tool_calls>
 - Put parameters under <parameters> using the exact schema names.
-""".strip()
+""".strip() + extras_text
 
 
 def merge_system(system: object, extra: str) -> object:
@@ -103,7 +148,13 @@ def _compact_message_text(text: str) -> str:
 
 def preprocess_payload(payload: dict[str, object], text_mapper: Callable[[str], str] | None = None) -> dict[str, object]:
     payload["messages"] = preprocess_messages(payload.get("messages"), text_mapper)
-    payload["system"] = merge_system(payload.get("system"), build_tool_prompt(payload.get("tools")))
+    choice = _resolve_anthropic_tool_choice(payload)
+    tools = payload.get("tools")
+    if tools and choice.get("mode") == "none":
+        tools = None
+        payload["tools"] = None
+    payload["system"] = merge_system(payload.get("system"), build_tool_prompt(tools, choice))
+    payload["__tool_choice__"] = choice
     return payload
 
 
@@ -114,6 +165,7 @@ def message_request(body: dict[str, Any]) -> MessageRequest:
         messages=normalize_messages(payload.get("messages"), payload.get("system")),
         model=str(payload.get("model") or "auto").strip() or "auto",
         tools=payload.get("tools"),
+        choice=payload.get("__tool_choice__") or {"mode": "auto", "forced_name": "", "parallel": True},
     )
 
 
@@ -150,8 +202,8 @@ def _preprocess_block(block: object, text_mapper: Callable[[str], str]) -> objec
     return block
 
 
-def message_response(model: str, text: str, input_tokens: int, output_tokens: int, tools: object = None) -> dict[str, object]:
-    content, stop_reason = content_blocks(text, tools)
+def message_response(model: str, text: str, input_tokens: int, output_tokens: int, tools: object = None, choice: dict[str, Any] | None = None) -> dict[str, object]:
+    content, stop_reason = content_blocks(text, tools, choice)
     return {
         "id": f"msg_{uuid.uuid4()}",
         "type": "message",
@@ -164,8 +216,10 @@ def message_response(model: str, text: str, input_tokens: int, output_tokens: in
     }
 
 
-def content_blocks(text: str, tools: object = None) -> tuple[list[dict[str, object]], str]:
+def content_blocks(text: str, tools: object = None, choice: dict[str, Any] | None = None) -> tuple[list[dict[str, object]], str]:
     calls = parse_tool_calls(text) if isinstance(tools, list) and tools else []
+    if choice:
+        calls = _apply_choice_filter_anthropic(calls, choice)
     text = strip_tool_markup(text)
     if calls:
         content = ([{"type": "text", "text": text}] if text else []) + [{"type": "tool_use", "id": f"toolu_{uuid.uuid4()}", "name": name, "input": args} for name, args in calls]
@@ -221,7 +275,7 @@ def parse_tool_value(raw: str) -> object:
         return value
 
 
-def stream_events(chunks: Iterable[dict[str, object]], model: str, input_tokens: int, output_tokens: Callable[[str], int], tools: object = None) -> Iterator[dict[str, object]]:
+def stream_events(chunks: Iterable[dict[str, object]], model: str, input_tokens: int, output_tokens: Callable[[str], int], tools: object = None, choice: dict[str, Any] | None = None) -> Iterator[dict[str, object]]:
     message_id = f"msg_{uuid.uuid4()}"
     created = int(time.time())
     current_text = ""
@@ -234,8 +288,8 @@ def stream_events(chunks: Iterable[dict[str, object]], model: str, input_tokens:
         text_open = True
         yield {"type": "content_block_start", "index": 0, "content_block": {"type": "text", "text": ""}}
     for chunk in chunks:
-        choice = (chunk.get("choices") or [{}])[0]
-        delta = choice.get("delta") or {}
+        choice_chunk = (chunk.get("choices") or [{}])[0]
+        delta = choice_chunk.get("delta") or {}
         text_delta = delta.get("content", "") if isinstance(delta, dict) else ""
         if text_delta:
             current_text += text_delta
@@ -250,8 +304,8 @@ def stream_events(chunks: Iterable[dict[str, object]], model: str, input_tokens:
                         streamed_text = visible_text
                         yield {"type": "content_block_delta", "index": 0, "delta": {"type": "text_delta", "text": text_delta}}
                 tool_started = tool_mode and visible_text != current_text
-        if choice.get("finish_reason"):
-            content, stop_reason = content_blocks(current_text, tools)
+        if choice_chunk.get("finish_reason"):
+            content, stop_reason = content_blocks(current_text, tools, choice)
             if text_open:
                 yield {"type": "content_block_stop", "index": 0}
             if stop_reason == "tool_use":
@@ -272,18 +326,41 @@ def stream_events(chunks: Iterable[dict[str, object]], model: str, input_tokens:
     yield {"type": "message_stop", "created": created}
 
 
-def _stream_buffered_blocks(content: list[dict[str, object]], start_index: int = 0) -> Iterator[dict[str, object]]:
+def _stream_buffered_blocks(content: list[dict[str, object]], start_index: int = 0, chunk_size: int = 32) -> Iterator[dict[str, object]]:
     for offset, block in enumerate(content):
         index = start_index + offset
         if block["type"] == "tool_use":
-            start = {"type": "tool_use", "id": block["id"], "name": block["name"], "input": {}}
-            delta = {"type": "input_json_delta", "partial_json": json.dumps(block.get("input") or {}, ensure_ascii=False)}
+            args_json = json.dumps(block.get("input") or {}, ensure_ascii=False)
+            yield {
+                "type": "content_block_start",
+                "index": index,
+                "content_block": {
+                    "type": "tool_use",
+                    "id": block["id"],
+                    "name": block["name"],
+                    "input": {},
+                },
+            }
+            # 拆成多段 input_json_delta，让 SDK 端能体验增量；最后一段闭合
+            for i in range(0, len(args_json), chunk_size):
+                yield {
+                    "type": "content_block_delta",
+                    "index": index,
+                    "delta": {"type": "input_json_delta", "partial_json": args_json[i:i + chunk_size]},
+                }
+            yield {"type": "content_block_stop", "index": index}
         else:
-            start = {"type": "text", "text": ""}
-            delta = {"type": "text_delta", "text": block.get("text") or ""}
-        yield {"type": "content_block_start", "index": index, "content_block": start}
-        yield {"type": "content_block_delta", "index": index, "delta": delta}
-        yield {"type": "content_block_stop", "index": index}
+            yield {
+                "type": "content_block_start",
+                "index": index,
+                "content_block": {"type": "text", "text": ""},
+            }
+            yield {
+                "type": "content_block_delta",
+                "index": index,
+                "delta": {"type": "text_delta", "text": block.get("text") or ""},
+            }
+            yield {"type": "content_block_stop", "index": index}
 
 
 def handle(body: dict[str, Any]) -> dict[str, Any] | Iterator[dict[str, Any]]:
@@ -295,12 +372,40 @@ def handle(body: dict[str, Any]) -> dict[str, Any] | Iterator[dict[str, Any]]:
             count_message_tokens(request.messages, request.model),
             lambda text: count_text_tokens(text, request.model),
             request.tools,
+            request.choice,
         )
     text = collect_chat_content(stream_text_chat_completion(request.backend, request.messages, request.model))
+
+    # required / forced 兜底重试一次
+    choice = request.choice or {"mode": "auto"}
+    if isinstance(request.tools, list) and request.tools and choice.get("mode") in ("required", "forced"):
+        calls = parse_tool_calls(text) if text else []
+        calls = _apply_choice_filter_anthropic(calls, choice)
+        if not calls:
+            forced = choice.get("forced_name", "")
+            nudge = (
+                f"You did not call any tool. You MUST call the tool '{forced}' now using the XML protocol. "
+                "Output ONLY <tool_calls>...</tool_calls>. No prose, no markdown."
+                if choice.get("mode") == "forced" and forced
+                else (
+                    "You did not call any tool. You MUST call exactly one tool now using the XML protocol. "
+                    "Output ONLY <tool_calls>...</tool_calls>. No prose, no markdown."
+                )
+            )
+            retry_messages = list(request.messages)
+            if text.strip():
+                retry_messages.append({"role": "assistant", "content": text})
+            retry_messages.append({"role": "user", "content": nudge})
+            retry_text = collect_chat_content(stream_text_chat_completion(request.backend, retry_messages, request.model))
+            retry_calls = _apply_choice_filter_anthropic(parse_tool_calls(retry_text) if retry_text else [], choice)
+            if retry_calls:
+                text = retry_text
+
     return message_response(
         request.model,
         text,
         count_message_tokens(request.messages, request.model),
         count_text_tokens(text, request.model),
         request.tools,
+        request.choice,
     )

@@ -16,6 +16,11 @@ dependencies = [
     "sqlalchemy>=2.0.0",
     "psycopg2-binary>=2.9.0",
     "gitpython>=3.1.0",
+    # SOCKS5 代理支持（711Proxy API URL 模式提取的 IP 用 SOCKS5）
+    "pysocks>=1.7.1",
+    # 注册流程里 requests session 用的 retry 适配器
+    "urllib3>=2.0.0",
+    "requests>=2.31.0",
 ]
 
 [dependency-groups]

@@ -44,3 +44,10 @@ old_chatgpt-*.json
 *-plus.json
 *-team.json
 *-pro.json
+
+# CLIProxyAPI runtime data (OAuth tokens, logs, config)
+cliproxy/
+
+# 参考代码（第三方项目，不提交）
+.reference/
+

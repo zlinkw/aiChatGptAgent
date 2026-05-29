@@ -5,6 +5,7 @@ import "./globals.css";
 import { PageTransition } from "@/components/page-transition";
 import { RouteProgress } from "@/components/route-progress";
 import { SideNav } from "@/components/side-nav";
+import { UpdateBanner } from "@/components/update-banner";
 
 const inter = Inter({
   subsets: ["latin"],
@@ -52,6 +53,7 @@ export default function RootLayout({
         <div className="fixed inset-y-0 left-0 z-30 hidden border-r border-gray-100 bg-white md:block" aria-hidden="true" style={{ width: "var(--sidebar-width, 240px)" }} />
         <main className="h-screen overflow-x-hidden overflow-y-auto px-4 pt-4 pb-2 text-foreground [scrollbar-gutter:stable_both-edges] sm:px-6 lg:px-8" style={{ marginLeft: "var(--sidebar-width, 240px)" }}>
           <div className="mx-auto box-border flex max-w-[1440px] flex-col pt-[env(safe-area-inset-top)]">
+            <UpdateBanner />
             <PageTransition>{children}</PageTransition>
           </div>
         </main>

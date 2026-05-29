@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <title>Codex Pool 助手设置</title>
+  <style>
+    body { font-family: -apple-system, system-ui, sans-serif; padding: 16px; min-width: 320px; font-size: 13px; }
+    h1 { font-size: 15px; margin-top: 0; }
+    label { display: block; margin-top: 12px; }
+    input { width: 100%; padding: 6px 8px; margin-top: 4px; box-sizing: border-box; font-family: monospace; }
+    button { margin-top: 16px; padding: 8px 16px; background: #7c3aed; color: white; border: 0; border-radius: 4px; cursor: pointer; }
+    button:hover { background: #6d28d9; }
+    .hint { color: #888; font-size: 11px; margin-top: 4px; }
+    .ok { color: #10b981; }
+    .err { color: #ef4444; }
+  </style>
+</head>
+<body>
+  <h1>Codex Pool 助手设置</h1>
+
+  <label>
+    ChatGPT2API 服务地址
+    <input id="base_url" placeholder="http://127.0.0.1:3001" />
+    <div class="hint">浏览器能访问到的 ChatGPT2API 地址。一般保持默认 127.0.0.1:3001 就行。</div>
+  </label>
+
+  <label>
+    Admin Key
+    <input id="admin_key" type="password" placeholder="config.json 里的 auth-key" />
+    <div class="hint">扩展用这个 key 调 /api/codex/pool/login/claim-credential 拿账号密码。</div>
+  </label>
+
+  <label style="display:flex;align-items:center;gap:6px;margin-top:16px;">
+    <input type="checkbox" id="auto_login" style="width:auto;margin:0;" />
+    <span>自动填邮箱密码并登录</span>
+  </label>
+
+  <label style="display:flex;align-items:center;gap:6px;">
+    <input type="checkbox" id="auto_consent" style="width:auto;margin:0;" />
+    <span>自动点"继续"和"同意"</span>
+  </label>
+
+  <label style="display:flex;align-items:center;gap:6px;">
+    <input type="checkbox" id="auto_close" style="width:auto;margin:0;" />
+    <span>授权完成后自动关闭窗口</span>
+  </label>
+
+  <label style="display:flex;align-items:center;gap:6px;">
+    <input type="checkbox" id="use_incognito" style="width:auto;margin:0;" />
+    <span>用隐私窗口打开（不开就用普通窗+自动清 cookie）</span>
+  </label>
+
+  <button id="save">保存</button>
+  <span id="status" style="margin-left:8px;"></span>
+
+  <script src="options.js"></script>
+</body>
+</html>

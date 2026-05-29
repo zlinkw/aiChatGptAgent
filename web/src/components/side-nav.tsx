@@ -20,6 +20,7 @@ import {
   PanelLeftClose,
   PanelLeftOpen,
   Radar,
+  Bot,
 } from "lucide-react";
 import { usePathname, useRouter } from "next/navigation";
 
@@ -35,7 +36,8 @@ const adminNavItems = [
   { href: "/register", label: "注册机", Icon: UserPlus },
   { href: "/register-settings", label: "注册配置", Icon: SlidersHorizontal },
   { href: "/design", label: "设计工具", Icon: Palette },
-  { href: "/gateway", label: "API 反代", Icon: Zap },
+  { href: "/gateway", label: "中转站接入", Icon: Zap },
+  { href: "/codex-pool", label: "Codex 号池", Icon: Bot },
   { href: "/sentiment", label: "舆情搜索", Icon: Radar },
   { href: "/image-manager", label: "图片管理", Icon: FolderOpen },
   { href: "/logs", label: "日志管理", Icon: ScrollText },

@@ -1,7 +1,10 @@
 from __future__ import annotations
 
+import threading
+import time
 from urllib.parse import quote
 
+import requests
 from fastapi import APIRouter, Header, HTTPException, Request
 from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import Response, StreamingResponse
@@ -60,6 +63,54 @@ class BackupDeleteRequest(BaseModel):
     key: str = ""
 
 
+# ===== 版本检查（GitHub 远端 VERSION 文件） =====
+# 直读仓库根目录的 VERSION 文件，比 release API 命中率高（不强依赖发版）
+_REPO_URL = "https://github.com/boteSu/aiChatGptAgent"
+_RELEASE_URL = "https://github.com/boteSu/aiChatGptAgent/releases/latest"
+_REMOTE_VERSION_URL = "https://raw.githubusercontent.com/boteSu/aiChatGptAgent/main/VERSION"
+_VERSION_CACHE_TTL = 3600  # 1 小时
+_version_cache: dict[str, object] = {"value": None, "ts": 0.0}
+_version_cache_lock = threading.Lock()
+
+
+def _fetch_latest_version() -> str | None:
+    """从 GitHub 拉最新 VERSION，带 1h 缓存。失败时返回 None，绝不抛异常。"""
+    now = time.time()
+    with _version_cache_lock:
+        ts = float(_version_cache.get("ts") or 0)
+        cached = _version_cache.get("value")
+        if cached is not None and (now - ts) < _VERSION_CACHE_TTL:
+            return str(cached) if cached else None
+    try:
+        resp = requests.get(_REMOTE_VERSION_URL, timeout=5)
+        resp.raise_for_status()
+        version = resp.text.strip().splitlines()[0].strip() if resp.text else ""
+        # 简单校验，避免 HTML 错误页被当成版本号
+        if not version or len(version) > 32 or " " in version:
+            version = ""
+    except Exception:
+        version = ""
+    with _version_cache_lock:
+        _version_cache["value"] = version or None
+        _version_cache["ts"] = now
+    return version or None
+
+
+def _semver_gt(a: str, b: str) -> bool:
+    """语义化比较 a > b。不严格支持 pre-release，够用就行。"""
+    def _parts(v: str) -> tuple[int, ...]:
+        clean = v.lstrip("vV").split("-")[0].split("+")[0]
+        out: list[int] = []
+        for piece in clean.split("."):
+            try:
+                out.append(int(piece))
+            except ValueError:
+                # 非数字段（如 rc1）当作 0，倾向于"看起来更稳定"的版本胜出
+                out.append(0)
+        return tuple(out)
+    return _parts(a) > _parts(b)
+
+
 def create_router(app_version: str) -> APIRouter:
     router = APIRouter()
 
@@ -77,6 +128,24 @@ def create_router(app_version: str) -> APIRouter:
     @router.get("/version")
     async def get_version():
         return {"version": app_version}
+
+    @router.get("/version/check")
+    async def check_version_update():
+        """对比 GitHub 仓库的 VERSION 文件，给前端展示更新提示用。
+
+        - 缓存 1 小时，避免每次刷新都打 GitHub
+        - 任何网络错误都静默降级返回 latest=None，绝不影响前端正常加载
+        - has_update 用 _semver_gt 做语义比较（1.10.0 > 1.9.9 而不是字符串比较）
+        """
+        latest = await run_in_threadpool(_fetch_latest_version)
+        has_update = bool(latest) and _semver_gt(latest, app_version)
+        return {
+            "current": app_version,
+            "latest": latest,
+            "has_update": has_update,
+            "release_url": _RELEASE_URL,
+            "repo_url": _REPO_URL,
+        }
 
     # ===== 中转 API 配置 =====
 

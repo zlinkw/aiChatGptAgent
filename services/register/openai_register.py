@@ -41,7 +41,7 @@ config = {
 register_config_file = base_dir.parents[1] / "data" / "register.json"
 try:
     saved_config = json.loads(register_config_file.read_text(encoding="utf-8"))
-    config.update({key: saved_config[key] for key in ("mail", "proxy", "proxy_pool", "total", "threads") if key in saved_config})
+    config.update({key: saved_config[key] for key in ("mail", "proxy", "proxy_pool", "total", "threads", "unified_password", "force_phone_verify") if key in saved_config})
 except Exception:
     pass
 
@@ -56,6 +56,10 @@ _api_proxy_last_fetch = 0.0
 
 def _fetch_api_proxies(api_url: str, protocol: str = "http") -> list[str]:
     """调用 711Proxy API URL 提取代理 IP 列表。"""
+    # SOCKS5 同样升级到 socks5h，让 DNS 走代理（避开本地 DNS 污染）
+    scheme = protocol.lower()
+    if scheme == "socks5":
+        scheme = "socks5h"
     try:
         resp = requests.get(api_url, timeout=15, verify=False)
         if resp.status_code != 200:
@@ -68,13 +72,13 @@ def _fetch_api_proxies(api_url: str, protocol: str = "http") -> list[str]:
             parts = line.split(":")
             if len(parts) == 2:
                 # ip:port（白名单模式，无需认证）
-                proxies.append(f"{protocol}://{parts[0]}:{parts[1]}")
+                proxies.append(f"{scheme}://{parts[0]}:{parts[1]}")
             elif len(parts) == 4:
                 # ip:port:user:pass
-                proxies.append(f"{protocol}://{parts[2]}:{parts[3]}@{parts[0]}:{parts[1]}")
+                proxies.append(f"{scheme}://{parts[2]}:{parts[3]}@{parts[0]}:{parts[1]}")
             elif len(parts) >= 2:
                 # 尝试当作 host:port
-                proxies.append(f"{protocol}://{parts[0]}:{parts[1]}")
+                proxies.append(f"{scheme}://{parts[0]}:{parts[1]}")
         if proxies:
             log(f"[代理池API] 成功提取 {len(proxies)} 个代理", "green")
         return proxies
@@ -83,12 +87,15 @@ def _fetch_api_proxies(api_url: str, protocol: str = "http") -> list[str]:
         return []
 
 
-def _build_proxy_from_pool() -> str:
+def _build_proxy_from_pool(sticky_session_id: str | None = None) -> str:
     """从 proxy_pool 配置生成一个代理 URL。
 
     支持两种模式：
     1. 用户名/密码模式（mode="userpass"）：通过 session ID 实现每任务不同 IP
     2. API URL 模式（mode="api"）：调接口提取 IP 列表，轮询使用
+
+    sticky_session_id：传入则**复用同一个出口 IP**，用于"注册和扫码必须同 IP"
+    （OpenAI 反作弊会盯注册→首次登录 IP 是否一致，不一致直接 deactivated）。
 
     proxy_pool 配置格式:
     {
@@ -158,11 +165,40 @@ def _build_proxy_from_pool() -> str:
         return str(config.get("proxy") or "").strip()
 
     # 生成 8 位随机 session ID，确保每个注册任务用不同 IP
-    session_id = "".join(random.choices(string.digits, k=8))
+    # sticky 模式：调用方传入了 session_id（注册→扫码同 IP 复用）
+    if sticky_session_id:
+        session_id = str(sticky_session_id).strip() or "".join(random.choices(string.digits, k=8))
+    else:
+        session_id = "".join(random.choices(string.digits, k=8))
     full_username = f"{username}{extra_params}-{session_prefix}{session_id}"
 
-    proxy_url = f"{protocol}://{full_username}:{password}@{host}:{port}"
+    # SOCKS5 自动升级为 socks5h（DNS 通过代理远端解析，绕过本地 DNS 污染）
+    # 中国大陆运营商常对 UDP/53 做透明拦截，把外部域名劫持到 198.18.x.x，
+    # 即使指定 1.1.1.1 / 8.8.8.8 也会被拦。socks5h 让代理端做 DNS。
+    scheme = protocol.lower()
+    if scheme == "socks5":
+        scheme = "socks5h"
+
+    proxy_url = f"{scheme}://{full_username}:{password}@{host}:{port}"
     return proxy_url
+
+
+def _build_proxy_with_session_id() -> tuple[str, str]:
+    """生成代理 URL 同时返回随机 session_id —— 给注册流程用。
+    注册时记下 session_id 落库，后续扫码 codex 时复用同一 IP。
+
+    返回 (proxy_url, session_id)。
+    若代理池未启用 / 是 API 模式 / 配置不全，session_id 返回 ""。
+    """
+    pool_cfg = config.get("proxy_pool") or {}
+    if not pool_cfg or not pool_cfg.get("enabled"):
+        return (str(config.get("proxy") or "").strip(), "")
+    mode = str(pool_cfg.get("mode") or "userpass").strip()
+    if mode != "userpass":
+        # API 模式没法 sticky（每次轮询不同 IP）
+        return (_build_proxy_from_pool(), "")
+    sid = "".join(random.choices(string.digits, k=8))
+    return (_build_proxy_from_pool(sticky_session_id=sid), sid)
 
 auth_base = "https://auth.openai.com"
 platform_base = "https://platform.openai.com"
@@ -658,11 +694,17 @@ class PlatformRegistrar:
         """检查是否需要手机验证，如果需要则通过 SMSPro 自动完成。
         
         返回验证用的手机号（如果验证了），否则返回 None。
+
+        触发条件（任一满足）：
+        1. OpenAI 主动要求（/phone-verification/status 返回 required=true）
+        2. config.force_phone_verify=true（强制每个新号都加手机，确保过 Codex device flow 风控）
         """
         sms_config = config.get("sms") or {}
         codes = [str(c).strip() for c in (sms_config.get("codes") or []) if str(c).strip()]
         if not codes:
             return None  # 没配置接码，跳过
+
+        force = bool(config.get("force_phone_verify"))
 
         # 检查当前页面是否要求手机验证
         headers = self._json_headers(f"{auth_base}/about-you")
@@ -670,14 +712,18 @@ class PlatformRegistrar:
             self.session, "get", f"{auth_base}/api/accounts/phone-verification/status",
             headers=headers, verify=False
         )
-        if resp is None or resp.status_code != 200:
-            return None  # 没有手机验证要求，正常继续
+        required = False
+        if resp is not None and resp.status_code == 200:
+            data = _response_json(resp)
+            required = bool(data.get("required"))
 
-        data = _response_json(resp)
-        if not data.get("required"):
-            return None
+        if not required and not force:
+            return None  # 没有手机验证要求，且未强制，跳过
 
-        step(index, "检测到需要手机号验证，开始 SMS 接码", "yellow")
+        if force and not required:
+            step(index, "已开启 force_phone_verify，强制走手机验证（确保过 Codex device flow）", "yellow")
+        else:
+            step(index, "检测到需要手机号验证，开始 SMS 接码", "yellow")
 
         # 从 SMS 接码平台获取号码
         sms_result = sms_provider.activate(sms_config)
@@ -731,7 +777,11 @@ class PlatformRegistrar:
         if not email:
             raise RuntimeError("邮箱服务未返回 address")
         step(index, f"邮箱创建完成: {email}")
-        password = _random_password()
+        # 注册配置里如果设了 unified_password，所有新号统一用这个密码——
+        # 方便后续在 Codex 号池 UI 里批量扫码（前端只需要展示一次密码就够）。
+        # 没设则回退到随机密码（每个号不一样）。
+        unified = str(config.get("unified_password") or "").strip()
+        password = unified if unified else _random_password()
         first_name, last_name = _random_name()
         step(index, f"账号凭据 邮箱={email} 密码={password}")
         self._platform_authorize(email, index)
@@ -746,10 +796,18 @@ class PlatformRegistrar:
         continue_url = self._create_account(f"{first_name} {last_name}", _random_birthdate(), index)
         verified_phone = self._verify_phone_if_needed(index)
         tokens = self._login_and_exchange_tokens(email, password, mailbox, continue_url, index)
+        access_token = str(tokens.get("access_token") or "").strip()
+
+        # Codex device flow 不在注册流程里跑：
+        # OpenAI 的 /codex/device?_data=... loader 端点被 Cloudflare 拦截，
+        # silent consent 在没有真浏览器的情况下跑不通。
+        # 注册完成后，号自动进 chatgpt 池；要把它升级到 Codex 池，需要在
+        # "Codex 号池" UI 里手动扫码补登（每个号扫一次，终身有效）。
+
         return {
             "email": email,
             "password": password,
-            "access_token": str(tokens.get("access_token") or "").strip(),
+            "access_token": access_token,
             "refresh_token": str(tokens.get("refresh_token") or "").strip(),
             "id_token": str(tokens.get("id_token") or "").strip(),
             "created_at": datetime.now(timezone.utc).isoformat(),
@@ -874,13 +932,14 @@ def _push_to_cpa(result: dict) -> None:
 
 def worker(index: int) -> dict:
     start = time.time()
-    proxy = _build_proxy_from_pool()
+    proxy, sticky_sid = _build_proxy_with_session_id()
     registrar = PlatformRegistrar(proxy)
     try:
         if proxy:
             # 只显示 host 部分，隐藏密码
             safe_display = proxy.split("@")[-1] if "@" in proxy else proxy
-            step(index, f"任务启动 (代理: {safe_display})")
+            sid_hint = f" sid={sticky_sid}" if sticky_sid else ""
+            step(index, f"任务启动 (代理: {safe_display}{sid_hint})")
         else:
             step(index, "任务启动 (直连)")
         result = registrar.register(index)
@@ -897,6 +956,14 @@ def worker(index: int) -> dict:
             updates["refresh_token"] = str(result["refresh_token"])
         if result.get("id_token"):
             updates["id_token"] = str(result["id_token"])
+        # 把密码也存进 accounts 里，供后续"老号补登 Codex"等流程使用。
+        # 库里只有少量人有读权限；不希望落库的话改 worker 注册时把这行去掉就行。
+        if result.get("password"):
+            updates["password"] = str(result["password"])
+        # 注册时用的代理 session_id 也存下来，扫码补登 Codex 时复用同 IP
+        # （OpenAI 反作弊会盯注册→首次登录 IP 是否一致，不一致直接 account_deactivated）
+        if sticky_sid:
+            updates["proxy_session_id"] = sticky_sid
         if updates:
             account_service.update_account(access_token, updates)
         _save_registered_account(result)

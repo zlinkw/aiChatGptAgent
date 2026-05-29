@@ -1,7 +1,7 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
-import { Activity, Copy, Key, LoaderCircle, Plus, Power, RefreshCw, Shield, Trash2, Zap } from "lucide-react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Activity, BookOpen, CheckCircle2, Copy, Info, Key, LoaderCircle, Plus, Power, RefreshCw, Shield, Trash2, Zap } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -74,8 +74,46 @@ function GatewayContent() {
 
   if (loading || !status || !config) return <div className="flex min-h-[40vh] items-center justify-center"><LoaderCircle className="size-5 animate-spin text-muted-foreground" /></div>;
 
-  const entryUrl = `http://localhost:${config.port}`;
+  // 用浏览器当前访问地址作为对外暴露的入口（避免给用户看到 localhost）
+  const publicOrigin = typeof window !== "undefined" ? window.location.origin : `http://localhost:${config.port}`;
+  const baseUrl = `${publicOrigin}/v1`;
+  const activeKey = config.client_keys.find(k => k.enabled)?.key || "";
+  const displayKey = activeKey || "（请先在下方生成一个 Key）";
+  const sampleKey = activeKey || "你的Key";
   const keyCount = config.client_keys.filter(k => k.enabled).length;
+
+  const copy = (text: string, label = "已复制") => {
+    void navigator.clipboard.writeText(text);
+    toast.success(label);
+  };
+
+  const curlChat = `curl ${baseUrl}/chat/completions \\
+  -H "Authorization: Bearer ${sampleKey}" \\
+  -H "Content-Type: application/json" \\
+  -d '{"model":"auto","messages":[{"role":"user","content":"你好"}]}'`;
+
+  const curlImage = `curl ${baseUrl}/images/generations \\
+  -H "Authorization: Bearer ${sampleKey}" \\
+  -H "Content-Type: application/json" \\
+  -d '{"model":"gpt-image-2","prompt":"一只在月亮上喝咖啡的猫","n":1}'`;
+
+  const pythonSnippet = `from openai import OpenAI
+
+client = OpenAI(
+    base_url="${baseUrl}",
+    api_key="${sampleKey}",
+)
+
+# 聊天
+chat = client.chat.completions.create(
+    model="auto",
+    messages=[{"role": "user", "content": "你好"}],
+)
+print(chat.choices[0].message.content)
+
+# 画图
+img = client.images.generate(model="gpt-image-2", prompt="赛博朋克城市", n=1)
+print(img.data[0].url)`;
 
   return (
     <div className="space-y-4 mt-4">
@@ -83,8 +121,8 @@ function GatewayContent() {
       <div className="flex items-center gap-3">
         <div className="grid size-10 place-items-center rounded-xl bg-kiro-gradient shadow-lg shadow-violet-500/30"><Zap className="size-5 text-white" /></div>
         <div>
-          <h1 className="text-[20px] font-semibold tracking-tight text-foreground">API 反代</h1>
-          <p className="text-[13px] text-muted-foreground">把入口状态、客户端接入、安全边界和观测线索压到一屏里</p>
+          <h1 className="text-[20px] font-semibold tracking-tight text-foreground">中转站接入</h1>
+          <p className="text-[13px] text-muted-foreground">把号池封装成 OpenAI 兼容 API，任何客户端都能直接接入</p>
         </div>
       </div>
 
@@ -92,7 +130,7 @@ function GatewayContent() {
       <div className="grid gap-3 md:grid-cols-3 lg:grid-cols-6">
         <div className="rounded-xl border border-border bg-card p-4 shadow-sm">
           <div className="text-[11px] text-muted-foreground mb-1">当前入口</div>
-          <div className="text-[14px] font-semibold font-data text-foreground">{entryUrl}</div>
+          <div className="text-[14px] font-semibold font-data text-foreground truncate">{publicOrigin}</div>
           <div className="text-[11px] text-muted-foreground mt-1">{config.allow_remote ? "允许远程访问" : "仅本机"} · {status.running ? "运行中" : "已停止"}</div>
         </div>
         <div className="rounded-xl border border-border bg-card p-4 shadow-sm">
@@ -127,14 +165,14 @@ function GatewayContent() {
         <div className="flex flex-wrap items-center gap-2 mb-3">
           <span className={cn("inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-semibold", status.running ? "bg-emerald-50 text-emerald-700" : "bg-rose-50 text-rose-700")}>
             <span className={cn("size-1.5 rounded-full", status.running ? "bg-emerald-500" : "bg-rose-500")} />
-            {status.running ? "反代运行中" : "已停止"}
+            {status.running ? "中转站运行中" : "已停止"}
           </span>
           <span className="inline-flex items-center gap-1.5 rounded-full bg-violet-50 px-2.5 py-1 text-[11px] font-semibold text-violet-700">允许远程访问</span>
           <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-50 px-2.5 py-1 text-[11px] font-semibold text-emerald-700">配置已保存</span>
         </div>
         <div className="flex items-center justify-between">
           <div>
-            <div className="text-[14px] font-semibold text-foreground">当前入口 {entryUrl}</div>
+            <div className="text-[14px] font-semibold text-foreground truncate">当前入口 {publicOrigin}</div>
             <div className="text-[12px] text-muted-foreground">账号管理池 · 所有可用账号 · 已配置 {keyCount} 个客户端 Key</div>
           </div>
           <div className="flex items-center gap-2">
@@ -145,12 +183,12 @@ function GatewayContent() {
         <div className="mt-3 grid grid-cols-3 gap-3">
           <div className="rounded-lg border border-border bg-secondary/30 p-3">
             <div className="text-[10px] text-muted-foreground uppercase font-data tracking-wider">运行快照</div>
-            <div className="text-[13px] font-semibold text-foreground mt-1">{entryUrl}</div>
+            <div className="text-[13px] font-semibold text-foreground mt-1 truncate">{publicOrigin}</div>
             <div className="text-[11px] text-muted-foreground">pool / {config.route_strategy}</div>
           </div>
           <div className="rounded-lg border border-border bg-secondary/30 p-3">
             <div className="text-[10px] text-muted-foreground uppercase font-data tracking-wider">接入与鉴权</div>
-            <div className="text-[13px] font-semibold text-foreground mt-1">{entryUrl}</div>
+            <div className="text-[13px] font-semibold text-foreground mt-1 truncate">{publicOrigin}</div>
             <div className="text-[11px] text-muted-foreground">Bearer {config.client_keys[0]?.key.slice(0, 8) || "—"}...</div>
           </div>
           <div className="rounded-lg border border-border bg-secondary/30 p-3">
@@ -161,33 +199,89 @@ function GatewayContent() {
         </div>
       </div>
 
-      {/* 接入指南 */}
+      {/* 接入教程 */}
       <section className="rounded-xl border border-border bg-card p-5 shadow-sm">
-        <div className="flex items-center gap-2 mb-3"><Zap className="size-4 text-primary" /><span className="text-[14px] font-semibold text-foreground">接入指南</span></div>
-        <p className="text-[12px] text-muted-foreground mb-3">在你的 AI 客户端（Cherry Studio、ChatBox、New API、NextChat 等）里填以下配置即可使用：</p>
-        <div className="space-y-2">
-          <div className="flex items-center gap-2 rounded-lg border border-border bg-secondary/30 px-3 py-2.5">
-            <span className="text-[11px] text-muted-foreground w-24 shrink-0">API Base URL</span>
-            <code className="flex-1 truncate font-data text-[12px] text-foreground">{typeof window !== "undefined" ? `${window.location.origin}/v1` : `${entryUrl}/v1`}</code>
-            <button type="button" className="cursor-pointer rounded p-1 text-muted-foreground hover:text-foreground" onClick={() => { const url = typeof window !== "undefined" ? `${window.location.origin}/v1` : `${entryUrl}/v1`; void navigator.clipboard.writeText(url); toast.success("已复制 Base URL"); }}><Copy className="size-3.5" /></button>
+        <div className="flex items-center gap-2 mb-1">
+          <BookOpen className="size-4 text-primary" />
+          <span className="text-[14px] font-semibold text-foreground">接入教程</span>
+          {!activeKey && <span className="ml-2 inline-flex items-center gap-1 rounded-full bg-amber-50 px-2 py-0.5 text-[10px] font-semibold text-amber-700"><Info className="size-3" />还没生成 Key,先去下方"客户端 API Keys"生成一个</span>}
+        </div>
+        <p className="text-[12px] text-muted-foreground mb-4">本中转站完全兼容 OpenAI API 协议,任何支持自定义 OpenAI 端点的客户端都能接。</p>
+
+        {/* Step 1: 复制接入信息 */}
+        <div className="mb-4">
+          <div className="flex items-center gap-2 mb-2">
+            <span className="grid size-5 place-items-center rounded-full bg-violet-100 text-[11px] font-bold text-violet-700">1</span>
+            <span className="text-[13px] font-semibold text-foreground">复制接入信息</span>
           </div>
-          <div className="flex items-center gap-2 rounded-lg border border-border bg-secondary/30 px-3 py-2.5">
-            <span className="text-[11px] text-muted-foreground w-24 shrink-0">API Key</span>
-            <code className="flex-1 truncate font-data text-[12px] text-foreground">{config.client_keys.find(k => k.enabled)?.key || "（请先生成一个 Key）"}</code>
-            <button type="button" className="cursor-pointer rounded p-1 text-muted-foreground hover:text-foreground" onClick={() => { const key = config.client_keys.find(k => k.enabled)?.key; if (key) { void navigator.clipboard.writeText(key); toast.success("已复制 Key"); } else { toast.error("没有可用的 Key"); } }}><Copy className="size-3.5" /></button>
-          </div>
-          <div className="flex items-center gap-2 rounded-lg border border-border bg-secondary/30 px-3 py-2.5">
-            <span className="text-[11px] text-muted-foreground w-24 shrink-0">可用模型</span>
-            <code className="flex-1 font-data text-[12px] text-foreground">gpt-image-2（画图）· auto / gpt-5（文本）· claude-* / gemini-*（中转）</code>
+          <div className="space-y-2 pl-7">
+            <div className="flex items-center gap-2 rounded-lg border border-border bg-secondary/30 px-3 py-2.5">
+              <span className="text-[11px] text-muted-foreground w-24 shrink-0">Base URL</span>
+              <code className="flex-1 truncate font-data text-[12px] text-foreground">{baseUrl}</code>
+              <button type="button" className="cursor-pointer rounded p-1 text-muted-foreground hover:text-foreground" onClick={() => copy(baseUrl, "已复制 Base URL")}><Copy className="size-3.5" /></button>
+            </div>
+            <div className="flex items-center gap-2 rounded-lg border border-border bg-secondary/30 px-3 py-2.5">
+              <span className="text-[11px] text-muted-foreground w-24 shrink-0">API Key</span>
+              <code className={cn("flex-1 truncate font-data text-[12px]", activeKey ? "text-foreground" : "text-muted-foreground")}>{displayKey}</code>
+              <button type="button" disabled={!activeKey} className="cursor-pointer rounded p-1 text-muted-foreground hover:text-foreground disabled:cursor-not-allowed disabled:opacity-40" onClick={() => activeKey && copy(activeKey, "已复制 Key")}><Copy className="size-3.5" /></button>
+            </div>
+            <div className="flex items-center gap-2 rounded-lg border border-border bg-secondary/30 px-3 py-2.5">
+              <span className="text-[11px] text-muted-foreground w-24 shrink-0">可用模型</span>
+              <code className="flex-1 font-data text-[12px] text-foreground">gpt-image-2(画图) · auto / gpt-5 / gpt-5-mini(聊天) · claude-* / gemini-* / deepseek-*(中转)</code>
+            </div>
           </div>
         </div>
-        <p className="text-[11px] text-muted-foreground mt-3">请求示例：</p>
-        <div className="mt-2 rounded-lg border border-border bg-secondary/30 px-3 py-2.5 overflow-x-auto">
-          <code className="text-[11px] font-data text-foreground whitespace-pre">{`curl ${typeof window !== "undefined" ? window.location.origin : entryUrl}/v1/chat/completions \\
-  -H "Authorization: Bearer ${config.client_keys.find(k => k.enabled)?.key || "你的Key"}" \\
-  -H "Content-Type: application/json" \\
-  -d '{"model":"auto","messages":[{"role":"user","content":"你好"}]}'`}</code>
-          <button type="button" className="ml-2 inline-flex cursor-pointer rounded p-1 text-muted-foreground hover:text-foreground align-top" onClick={() => { const cmd = `curl ${typeof window !== "undefined" ? window.location.origin : entryUrl}/v1/chat/completions -H "Authorization: Bearer ${config.client_keys.find(k => k.enabled)?.key || "你的Key"}" -H "Content-Type: application/json" -d '{"model":"auto","messages":[{"role":"user","content":"你好"}]}'`; void navigator.clipboard.writeText(cmd); toast.success("已复制 curl 命令"); }}><Copy className="size-3.5" /></button>
+
+        {/* Step 2: 命令行验证 */}
+        <div className="mb-4">
+          <div className="flex items-center gap-2 mb-2">
+            <span className="grid size-5 place-items-center rounded-full bg-violet-100 text-[11px] font-bold text-violet-700">2</span>
+            <span className="text-[13px] font-semibold text-foreground">命令行验证(可选)</span>
+          </div>
+          <div className="pl-7 space-y-2">
+            <div className="rounded-lg border border-border bg-secondary/30 p-3 relative group">
+              <div className="text-[10px] text-muted-foreground mb-1.5 font-semibold">聊天</div>
+              <pre className="text-[11px] font-data text-foreground whitespace-pre-wrap break-all">{curlChat}</pre>
+              <button type="button" className="absolute top-2 right-2 cursor-pointer rounded p-1 text-muted-foreground hover:text-foreground bg-card border border-border" onClick={() => copy(curlChat, "已复制 curl 命令")}><Copy className="size-3.5" /></button>
+            </div>
+            <div className="rounded-lg border border-border bg-secondary/30 p-3 relative group">
+              <div className="text-[10px] text-muted-foreground mb-1.5 font-semibold">画图</div>
+              <pre className="text-[11px] font-data text-foreground whitespace-pre-wrap break-all">{curlImage}</pre>
+              <button type="button" className="absolute top-2 right-2 cursor-pointer rounded p-1 text-muted-foreground hover:text-foreground bg-card border border-border" onClick={() => copy(curlImage, "已复制 curl 命令")}><Copy className="size-3.5" /></button>
+            </div>
+            <p className="text-[11px] text-muted-foreground">收到 JSON 回复就说明中转站工作正常。</p>
+          </div>
+        </div>
+
+        {/* Step 3: 客户端接入 */}
+        <div className="mb-4">
+          <div className="flex items-center gap-2 mb-2">
+            <span className="grid size-5 place-items-center rounded-full bg-violet-100 text-[11px] font-bold text-violet-700">3</span>
+            <span className="text-[13px] font-semibold text-foreground">客户端接入</span>
+          </div>
+          <div className="pl-7 grid gap-2 sm:grid-cols-2">
+            <ClientCard name="Cherry Studio" path="设置 → 模型服务 → 添加 → OpenAI 兼容 → 填 Base URL 和 Key" />
+            <ClientCard name="ChatBox" path="设置 → AI 提供方 → OpenAI API Compatible → 填 Base URL 和 Key" />
+            <ClientCard name="NextChat / LobeChat" path="设置 → 自定义模型 → 填 Endpoint 和 Key" />
+            <ClientCard name="OpenCat / Raycast AI" path="自定义 API → 填 Base URL 和 Key" />
+            <ClientCard name="沉浸式翻译 / 划词翻译" path="翻译服务选 OpenAI → 自定义 API 接口 → 填 Base URL 和 Key" />
+            <ClientCard name="New API / One API" path="添加渠道 → 类型选 OpenAI → 代理填 Base URL → Key 填上面那个" />
+          </div>
+        </div>
+
+        {/* Step 4: 代码接入 */}
+        <div>
+          <div className="flex items-center gap-2 mb-2">
+            <span className="grid size-5 place-items-center rounded-full bg-violet-100 text-[11px] font-bold text-violet-700">4</span>
+            <span className="text-[13px] font-semibold text-foreground">代码接入(Python)</span>
+          </div>
+          <div className="pl-7">
+            <div className="rounded-lg border border-border bg-secondary/30 p-3 relative">
+              <pre className="text-[11px] font-data text-foreground whitespace-pre-wrap break-all">{pythonSnippet}</pre>
+              <button type="button" className="absolute top-2 right-2 cursor-pointer rounded p-1 text-muted-foreground hover:text-foreground bg-card border border-border" onClick={() => copy(pythonSnippet, "已复制示例代码")}><Copy className="size-3.5" /></button>
+            </div>
+            <p className="text-[11px] text-muted-foreground mt-2">JS / Go / Java 等任意 OpenAI SDK 同理,只改 <code className="font-data text-[11px]">base_url</code> 即可。</p>
+          </div>
         </div>
       </section>
 
@@ -277,4 +371,16 @@ export default function GatewayPage() {
   const { isCheckingAuth, session } = useAuthGuard(["admin"]);
   if (isCheckingAuth || !session || session.role !== "admin") return <div className="flex min-h-[40vh] items-center justify-center"><LoaderCircle className="size-5 animate-spin text-muted-foreground" /></div>;
   return <GatewayContent />;
+}
+
+function ClientCard({ name, path }: { name: string; path: string }) {
+  return (
+    <div className="rounded-lg border border-border bg-secondary/30 px-3 py-2.5">
+      <div className="flex items-center gap-1.5 mb-1">
+        <CheckCircle2 className="size-3.5 text-emerald-500" />
+        <span className="text-[12px] font-semibold text-foreground">{name}</span>
+      </div>
+      <div className="text-[11px] text-muted-foreground leading-relaxed">{path}</div>
+    </div>
+  );
 }

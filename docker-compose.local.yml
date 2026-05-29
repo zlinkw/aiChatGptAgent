@@ -13,9 +13,25 @@ services:
       - ./web_dist:/app/web_dist
       - ./api:/app/api
       - ./services:/app/services
+      - ./VERSION:/app/VERSION
+      # CLIProxyAPI 的 auths 目录 —— ChatGPT2API 把 codex token 写到这里，
+      # CLIProxyAPI 会 hot-reload 自动接进号池。
+      - ./cliproxy/auths:/app/cliproxy/auths
     environment:
       STORAGE_BACKEND: sqlite
       DATABASE_URL: sqlite:////app/data/accounts.db
+      # 容器内 codex auths 目录路径
+      CODEX_AUTHS_DIR: /app/cliproxy/auths
+    # 绕过中国大陆运营商 DNS 污染：把 711Proxy 域名钉死到真实 IP
+    # （DoH 查询出来的 A 记录，IP 多个之间会自动负载均衡）
+    # 如果以后 711Proxy 换 IP，重新 dig +short global.rotgb.711proxy.com 一次替换即可
+    extra_hosts:
+      - "global.rotgb.711proxy.com:150.107.36.95"
+      - "global.rotgbapi.711proxy.com:150.107.36.95"
+    # 同时给容器配干净 DNS（部分发行版会优先 /etc/hosts，配 DNS 是兜底）
+    dns:
+      - 1.1.1.1
+      - 8.8.8.8
     # 存储后端配置 (可选值: json, sqlite, postgres, git)
     # environment:
     #   STORAGE_BACKEND: json
